@@ -127,6 +127,9 @@ export function VideoLibraryScreen() {
               <VideoCard video={v} active={v.id === selected?.id} onSelect={play} />
             </li>
           ))}
+          <li>
+            <ComingSoonCard />
+          </li>
         </ul>
       ) : (
         <EmptyState
@@ -141,5 +144,23 @@ export function VideoLibraryScreen() {
         />
       )}
     </Page>
+  );
+}
+
+/** Closing tile of the grid: tells learners the library keeps growing. Not a video. */
+function ComingSoonCard() {
+  return (
+    <div className="block">
+      <span aria-hidden className="relative block aspect-video w-full overflow-hidden rounded-2xl bg-forest">
+        <span className="pattern-girih absolute inset-0 opacity-[0.12]" />
+        <span className="absolute inset-0 grid place-items-center">
+          <span className="grid size-11 place-items-center rounded-full bg-cream/15 text-cream ring-1 ring-inset ring-cream/25">
+            <Icon name="plus" size={18} />
+          </span>
+        </span>
+      </span>
+      <p className="mt-3 font-medium leading-6 text-forest">مزيد من المقاطع قريبًا</p>
+      <p className="mt-1 text-xs leading-5 text-muted">نضيف مقاطع جديدة بعد مراجعتها، فعُد إلينا بين حين وآخر.</p>
+    </div>
   );
 }

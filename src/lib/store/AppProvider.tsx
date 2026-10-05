@@ -125,17 +125,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ email, password }),
         }).catch(() => null);
         if (res && res.status === 401) throw new Error("البريد الإلكتروني أو كلمة المرور غير صحيحة");
+        if (res && !res.ok) {
+          // Only "no database on this server" falls back to a device-only account;
+          // any other failure (rate limit, server error) is shown, never treated as a sign-in.
+          const body = await res.json().catch(() => ({}));
+          if (body.code !== "no_database") throw new Error(body.error ?? "تعذّر تسجيل الدخول، حاول مرة أخرى.");
+        }
         if (res?.ok) {
           // Real account: adopt the server's saved state. Never seed an empty state here —
           // the autosave effect would overwrite the user's stored progress with it.
           const user = (await res.json().catch(() => ({}))).user as { id?: string; email?: string } | undefined;
           const loaded = await repo.current.load().catch(() => null);
           if (!loaded && isApiMode()) throw new Error("تعذّر تحميل بياناتك. حاول مرة أخرى.");
-          setState(loaded ?? { ...EMPTY_STATE, session: { userId: user?.id ?? uid("local"), email } });
+          const session = { userId: user?.id ?? uid("local"), email };
+          if (isApiMode()) setState({ ...loaded!, session });
+          // Device copy: keep it only if it belongs to this account (it is stored signed-out after logout).
+          else setState(loaded && !loaded.demo && loaded.profile?.email === email ? { ...loaded, session } : { ...EMPTY_STATE, session });
           return;
         }
         update((s) => {
-          if (s.session && s.profile?.email === email) return s; // same device account
+          if (!s.demo && s.profile?.email === email) return { ...s, session: s.session ?? { userId: uid("local"), email } }; // same device account
           return { ...EMPTY_STATE, session: { userId: uid("local"), email } };
         });
       },
