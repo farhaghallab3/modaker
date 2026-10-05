@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { alternativeRecognizer, getRecognizer, SpeechError, type RecognitionSession, type SpeechRecognizer } from "@/lib/recitation/speech";
+import { sttLog } from "@/lib/recitation/speech/diagnostics";
 import type { AyahRange, Transcript } from "@/lib/types";
 
 export type RecorderPhase = "idle" | "starting" | "recording" | "transcribing" | "error";
@@ -37,7 +38,9 @@ export function useRecitationRecorder({
 
   // Recognizer detection is browser-only.
   useEffect(() => {
-    setRecognizer(getRecognizer());
+    const r = getRecognizer();
+    sttLog("hook", "recognizer-selected", { recognizer: r?.id ?? null, mode: process.env.NEXT_PUBLIC_STT_MODE ?? "(unset → browser)" });
+    setRecognizer(r);
     setChecked(true);
   }, []);
 
@@ -51,6 +54,7 @@ export function useRecitationRecorder({
     (e: unknown) => {
       detach();
       session.current = null;
+      sttLog("hook", "fail", { code: e instanceof SpeechError ? e.code : "unknown", message: (e as Error)?.message ?? null });
       setError(e instanceof SpeechError ? e : new SpeechError("unknown", (e as Error)?.message, e));
       setPhase("error");
     },
@@ -93,6 +97,7 @@ export function useRecitationRecorder({
       if (session.current !== s) return;
       detach();
       session.current = null;
+      sttLog("hook", "transcript", { provider: t.provider, textLength: t.text.length });
       if (!t.text.trim()) return fail(new SpeechError("no-speech"));
       setPhase("idle");
       onTranscriptRef.current(t);

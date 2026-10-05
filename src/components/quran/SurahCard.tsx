@@ -90,7 +90,7 @@ export function SurahCard({
             className="flex-1"
           />
           <span className="text-xs text-muted num shrink-0">
-            {toArabicDigits(memorized)}/{toArabicDigits(meta.ayahCount)} · {percentLabel(ratio)}
+            {toArabicDigits(memorized)}/{toArabicDigits(meta.ayahCount)} · {percentLabel(ratio)} من الحفظ
           </span>
         </div>
       ) : null}

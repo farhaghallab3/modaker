@@ -7,11 +7,15 @@ import { Icon, type IconName } from "@/components/ui/Icon";
 import { Badge, ButtonLink, EmptyState, ProgressBar, ProgressRing, Stat, cn } from "@/components/ui/primitives";
 import { ayahsLabel, countLabel, daysLabel, formatPercent, formatTime, rangeLabel } from "@/lib/arabic";
 import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
+import { needsReviewLabel, rangesLabel } from "@/lib/review/labels";
+import type { SurahCompletion, SurahOverview } from "@/lib/review/learning";
 import { useApp } from "@/lib/store/AppProvider";
 import {
   averageAccuracy,
+  continuation,
   derivedReminders,
   lastNDays,
+  memorizationOverview,
   memorizedCount,
   reviewQueue,
   streakDays,
@@ -33,14 +37,20 @@ export function DashboardScreen() {
   const { state } = useApp();
 
   const data = useMemo(() => {
-    const resume = state.resume;
-    const meta = resume ? getSurahMeta(resume.surah) : undefined;
+    // Where to continue is DERIVED from what is memorized — a stale stored pointer cannot mislead.
+    const cont = continuation(state);
+    const meta = cont.kind === "none" ? undefined : getSurahMeta(cont.surah);
+    const resume = meta && cont.kind !== "none" ? { surah: meta.number, ayah: cont.kind === "continue" ? cont.ayah : meta.ayahCount } : null;
+    // When the surah is complete, where the learner is really working next (never hides other surahs).
+    const next = cont.kind === "complete" ? cont.next : null;
     const target = state.profile?.dailyTargetAyahs ?? state.goals.dailyAyahs;
     const reviews = reviewQueue(state)
       .filter((r) => r.bucket === "today" || r.bucket === "weak")
       .sort((a, b) => b.priority - a.priority);
     return {
       resume,
+      next,
+      overview: memorizationOverview(state),
       meta,
       target,
       surah: meta ? surahProgress(state, meta.number) : null,
@@ -70,6 +80,7 @@ export function DashboardScreen() {
           meta={data.meta}
           ayah={data.resume?.ayah ?? null}
           surah={data.surah}
+          next={data.next}
           target={data.target}
         />
         <WirdPanel
@@ -84,12 +95,16 @@ export function DashboardScreen() {
 
       <StatsRow
         meta={data.meta}
+        complete={!!data.surah && data.surah.complete}
+        next={data.next}
         ayah={data.resume?.ayah ?? null}
         streak={data.streak}
         accuracy={data.accuracy}
         memorized={data.memorized}
         weak={data.weak}
       />
+
+      <MemorizedOverview rows={data.overview} />
 
       <div className="grid gap-12 lg:grid-cols-12 lg:gap-10">
         <ReviewToday className="lg:col-span-7" items={data.reviews} />
@@ -99,6 +114,41 @@ export function DashboardScreen() {
         </div>
       </div>
     </Page>
+  );
+}
+
+// ── All memorized Quran (not just the current surah) ─────────────────────
+function MemorizedOverview({ rows }: { rows: SurahOverview[] }) {
+  if (!rows.length) return null;
+  return (
+    <section aria-labelledby="mem-title" className="mb-12">
+      <h2 id="mem-title" className="font-display text-2xl text-forest mb-3">
+        محفوظاتك
+      </h2>
+      <ul className="grid gap-3 md:grid-cols-2">
+        {rows.map((r) => {
+          const name = getSurahMeta(r.surah)?.nameAr;
+          return (
+            <li key={r.surah}>
+              <Link href={`/quran/${r.surah}`} className="block rounded-2xl bg-white/70 px-4 py-3.5 ring-1 ring-line transition-colors hover:bg-parchment/60">
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="font-display text-xl text-forest">سورة {name}</span>
+                  <span className="text-xs text-muted num">
+                    {toArabicDigits(r.memorized)} / {toArabicDigits(r.total)} محفوظة{r.complete ? " · مكتملة" : ""}
+                  </span>
+                </span>
+                <ProgressBar value={r.ratio} tone={r.complete ? "forest" : "olive"} label={`سورة ${name}: ${formatPercent(r.ratio)} من الحفظ`} className="mt-2.5" />
+                <span className="mt-2 block text-xs leading-6 text-muted">
+                  {r.ranges.length ? rangesLabel(r.ranges) : "لم تُحفظ آية بعد"}
+                  {r.weak ? ` · ${needsReviewLabel(r.weak)}` : ""}
+                  {r.learning ? ` · ${toArabicDigits(r.learning)} قيد التعلّم` : ""}
+                </span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -144,13 +194,16 @@ function ResumeHero({
   meta,
   ayah,
   surah,
+  next,
   target,
 }: {
   className?: string;
   name: string;
   meta?: SurahMeta;
   ayah: number | null;
-  surah: { memorized: number; total: number; ratio: number } | null;
+  surah: SurahCompletion | null;
+  /** when this surah is complete: where the learner is working next */
+  next?: { surah: number; ayah: number } | null;
   target: number;
 }) {
   const done = !!surah && surah.ratio >= 1;
@@ -176,6 +229,8 @@ function ResumeHero({
                 <p className="mt-2 text-cream/80 num">
                   {done ? `${ayahsLabel(meta.ayahCount)} محفوظة` : `الآية ${toArabicDigits(ayah)} من ${toArabicDigits(meta.ayahCount)}`}
                 </p>
+                {/* review state is separate from completion: a fully memorized surah can have ayahs to review */}
+                {surah && surah.weak > 0 ? <p className="mt-1 text-sm text-sand">{needsReviewLabel(surah.weak)}</p> : null}
               </div>
               {surah ? (
                 <ProgressRing
@@ -187,7 +242,7 @@ function ResumeHero({
                 >
                   <span>
                     <span className="block text-lg font-semibold num">{formatPercent(surah.ratio)}</span>
-                    <span className="block text-[0.68rem] text-cream/60">من السورة</span>
+                    <span className="block text-[0.68rem] text-cream/60">من الحفظ</span>
                   </span>
                 </ProgressRing>
               ) : null}
@@ -203,6 +258,10 @@ function ResumeHero({
             {meta && ayah && !done ? (
               <ButtonLink href={`/memorize/${meta.number}?from=${ayah}`} variant="secondary" size="lg" icon="play">
                 متابعة الحفظ
+              </ButtonLink>
+            ) : done && next ? (
+              <ButtonLink href={`/memorize/${next.surah}?from=${next.ayah}`} variant="secondary" size="lg" icon="play">
+                تابع: سورة {getSurahMeta(next.surah)?.nameAr} — الآية {toArabicDigits(next.ayah)}
               </ButtonLink>
             ) : (
               <ButtonLink href="/quran" variant="secondary" size="lg" icon="mushaf">
@@ -316,6 +375,8 @@ function WirdPanel({
 // ── Compact stats: how am I progressing? ─────────────────────────────────
 function StatsRow({
   meta,
+  complete,
+  next,
   ayah,
   streak,
   accuracy,
@@ -328,17 +389,26 @@ function StatsRow({
   accuracy: number | null;
   memorized: number;
   weak: number;
+  complete: boolean;
+  next?: { surah: number; ayah: number } | null;
 }) {
   const items: { label: string; value: string; hint?: string; icon: IconName; wide?: boolean }[] = [
     {
-      label: "آخر موضع",
-      value: meta && ayah ? `${meta.nameAr} · ${toArabicDigits(ayah)}` : "—",
-      hint: meta && ayah ? "السورة · الآية" : undefined,
+      label: "موضع المتابعة",
+      value:
+        meta && ayah
+          ? complete
+            ? next
+              ? `${getSurahMeta(next.surah)?.nameAr} · ${toArabicDigits(next.ayah)}`
+              : `${meta.nameAr} · مكتملة`
+            : `${meta.nameAr} · ${toArabicDigits(ayah)}`
+          : "—",
+      hint: meta && ayah ? (complete ? (next ? `بعد إتمام سورة ${meta.nameAr}` : "أتممت حفظها — راجعها") : "السورة · الآية") : undefined,
       icon: "bookmark",
       wide: true,
     },
     { label: "أيام الالتزام", value: toArabicDigits(streak), hint: streak ? "متتالية" : "يبدأ العدّ اليوم", icon: "flame" },
-    { label: "نسبة الإتقان", value: accuracy != null ? formatPercent(accuracy) : "—", hint: accuracy != null ? "متوسط دقة التسميع" : "بعد أول تسميع", icon: "target" },
+    { label: "دقة التسميع", value: accuracy != null ? formatPercent(accuracy) : "—", hint: accuracy != null ? "متوسط آخر تسميع لكل آية" : "بعد أول تسميع", icon: "target" },
     { label: "الآيات المحفوظة", value: toArabicDigits(memorized), icon: "mushaf" },
     { label: "تحتاج مراجعة", value: toArabicDigits(weak), hint: weak ? "نثبّتها معًا" : "كل شيء ثابت", icon: "review" },
   ];

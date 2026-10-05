@@ -26,6 +26,14 @@ export function ayahCountLabel(n: number): string {
   return `${d(n)} آية`;
 }
 
+/** REVIEW STATE wording: "آية تحتاج مراجعة" / "آيتان تحتاجان مراجعة" / "٣ آيات تحتاج مراجعة". */
+export function needsReviewLabel(n: number): string {
+  if (n === 1) return "آية تحتاج مراجعة";
+  if (n === 2) return "آيتان تحتاجان مراجعة";
+  if (n >= 3 && n <= 10) return `${d(n)} آيات تحتاج مراجعة`;
+  return `${d(n)} آية تحتاج مراجعة`;
+}
+
 /** Bare noun form after a number ("٣ آيات" / "١٢ آية"), number shown separately. */
 export function ayahNoun(n: number): string {
   return n >= 3 && n <= 10 ? "آيات" : "آية";
@@ -57,6 +65,12 @@ export function percentLabel(ratio: number): string {
 /** "الآية ٥" or "الآيات ٥–٩". */
 export function rangeLabel(from: number, to: number): string {
   return from === to ? `الآية ${d(from)}` : `الآيات ${d(from)}–${d(to)}`;
+}
+
+/** Memorized ranges as text: "الآية ١" · "الآيات ١، ٣–٤". */
+export function rangesLabel(ranges: { from: number; to: number }[]): string {
+  const parts = ranges.map((r) => (r.from === r.to ? d(r.from) : `${d(r.from)}–${d(r.to)}`));
+  return `${ranges.length === 1 && ranges[0].from === ranges[0].to ? "الآية" : "الآيات"} ${parts.join("، ")}`;
 }
 
 /** "٠٣:٢٤" */

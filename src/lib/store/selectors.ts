@@ -1,4 +1,5 @@
 import { getSurahMeta, SURAHS, toArabicDigits } from "@/lib/quran/surahs";
+import { continuation, isMastered, isMemorized, isWeak, memorizationOverview, nextToMemorize, recitationAccuracy, surahCompletion, type SurahCompletion } from "@/lib/review/learning";
 import { buildReviewQueue } from "@/lib/review/scheduler";
 import type { AppNotification, AyahProgress, ReviewItem } from "@/lib/types";
 import { todayKey, type UserState } from "./state";
@@ -9,14 +10,14 @@ export function progressList(s: UserState): AyahProgress[] {
   return Object.values(s.progress);
 }
 
+/** COMPLETION: ayahs the learner has memorized (declared, or shown by reciting well). */
 export function memorizedCount(s: UserState): number {
-  return progressList(s).filter((p) => p.status !== "new" && p.status !== "learning").length;
+  return progressList(s).filter(isMemorized).length;
 }
 
-export function surahProgress(s: UserState, surah: number): { memorized: number; total: number; ratio: number } {
-  const total = getSurahMeta(surah)?.ayahCount ?? 0;
-  const memorized = progressList(s).filter((p) => p.surah === surah && p.status !== "new" && p.status !== "learning").length;
-  return { memorized, total, ratio: total ? memorized / total : 0 };
+/** COMPLETION of one surah (+ how many of its memorized ayahs are weak / mastered). `ratio` is not mastery. */
+export function surahProgress(s: UserState, surah: number): SurahCompletion {
+  return surahCompletion(s, surah);
 }
 
 export function completedSurahs(s: UserState): number {
@@ -58,23 +59,28 @@ export function lastNDays(s: UserState, n = 7, now = new Date()) {
   });
 }
 
+/**
+ * RECITATION ACCURACY: the mean of the LATEST recitation accuracy of each ayah that has been recited.
+ * It is a measure of how the last recitations went — not mastery, and not completion.
+ */
 export function averageAccuracy(s: UserState): number | null {
-  const accs = progressList(s)
-    .map((p) => p.accuracy)
-    .filter((a): a is number => a != null);
-  if (!accs.length) return null;
-  return accs.reduce((a, b) => a + b, 0) / accs.length;
+  return recitationAccuracy(s)?.value ?? null;
 }
 
+/** REVIEW STATE: memorized-or-learning ayahs whose latest recitation was below passing. */
 export function weakAyahs(s: UserState): AyahProgress[] {
   return progressList(s)
-    .filter((p) => p.status === "weak" || (p.accuracy != null && p.accuracy < 0.75))
+    .filter(isWeak)
     .sort((a, b) => (a.accuracy ?? 1) - (b.accuracy ?? 1));
 }
 
+/** MASTERY: ayahs made solid by repeated, spaced, accurate recitation. */
 export function strongAyahs(s: UserState): AyahProgress[] {
-  return progressList(s).filter((p) => p.status === "mastered");
+  return progressList(s).filter(isMastered);
 }
+
+/** Where to continue (derived from what is actually memorized, not a stale stored pointer). */
+export { continuation, memorizationOverview, nextToMemorize };
 
 export function reviewQueue(s: UserState, now = new Date()): ReviewItem[] {
   return buildReviewQueue(progressList(s), now);
@@ -84,14 +90,22 @@ export function today(s: UserState, now = new Date()) {
   return s.activity.find((a) => a.date === todayKey(now)) ?? { date: todayKey(now), memorized: 0, reviewed: 0, recitations: 0 };
 }
 
-/** Today's new-memorization portion: next `dailyAyahs` from the resume point. */
+/** Today's new-memorization portion: the next `dailyAyahs` from the continuation point (null if there is none). */
 export function todaysWird(s: UserState): { surah: number; from: number; to: number } | null {
-  if (!s.resume) return null;
-  const meta = getSurahMeta(s.resume.surah);
+  const next = nextToMemorize(s);
+  if (!next) return null;
+  const meta = getSurahMeta(next.surah);
   if (!meta) return null;
   const target = s.profile?.dailyTargetAyahs ?? s.goals.dailyAyahs;
-  const from = s.resume.ayah;
-  const to = Math.min(meta.ayahCount, from + target - 1);
+  const from = next.ayah;
+  let to = Math.min(meta.ayahCount, from + target - 1);
+  // stop before an ayah that is already memorized: today's wird is NEW material only
+  for (let a = from + 1; a <= to; a++) {
+    if (isMemorized(s.progress[`${meta.number}:${a}`])) {
+      to = a - 1;
+      break;
+    }
+  }
   return { surah: meta.number, from, to };
 }
 
@@ -108,7 +122,7 @@ export function derivedReminders(s: UserState, now = new Date()): AppNotificatio
   const out: AppNotification[] = [];
   const t = today(s, now);
   const queue = reviewQueue(s, now).filter((r) => r.bucket === "today" || r.bucket === "weak");
-  const resume = s.resume;
+  const resume = nextToMemorize(s);
   const lastActive = s.activity.filter((a) => a.memorized + a.reviewed + a.recitations > 0).map((a) => a.date).sort().pop();
   const iso = now.toISOString();
 
@@ -118,7 +132,7 @@ export function derivedReminders(s: UserState, now = new Date()): AppNotificatio
       id: "derived-welcome",
       kind: "welcome-back",
       title: "أهلًا بعودتك",
-      body: `توقفت عند سورة ${m?.nameAr} — الآية ${toArabicDigits(resume.ayah)}.`,
+      body: `ستواصل من سورة ${m?.nameAr} — الآية ${toArabicDigits(resume.ayah)}.`,
       href: `/memorize/${resume.surah}?from=${resume.ayah}`,
       createdAt: iso,
       read: false,

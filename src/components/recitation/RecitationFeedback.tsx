@@ -23,6 +23,7 @@ const MISTAKE_META: Record<MistakeType, { label: string; icon: IconName; tone: s
   incorrect: { label: "كلمة مختلفة", icon: "x", tone: "bg-terracotta-50 text-terracotta" },
   order: { label: "ترتيب الآيات", icon: "layers", tone: "bg-olive-100 text-olive-600" },
   hesitation: { label: "توقف طويل", icon: "clock", tone: "bg-parchment text-muted" },
+  uncertain: { label: "لم نتأكد من هذه الكلمة — أعد هذا الجزء", icon: "info", tone: "bg-sand-100 text-sand-700" },
 };
 
 function encouragement(acc: number) {
@@ -50,7 +51,8 @@ export function RecitationFeedback({
 }) {
   const [filter, setFilter] = useState<"all" | "issues">("all");
   const mastered = analysis.ayahs.filter((a) => a.status === "mastered").length;
-  const needs = analysis.ayahs.length - mastered;
+  const unsure = analysis.ayahs.filter((a) => a.status === "uncertain").length;
+  const needs = analysis.ayahs.length - mastered - unsure;
   const shown = filter === "all" ? analysis.ayahs : analysis.ayahs.filter((a) => a.status !== "mastered" || a.mistakes.length);
   const acc = analysis.accuracy;
 
@@ -69,9 +71,10 @@ export function RecitationFeedback({
           <div className="min-w-0 flex-1">
             <h2 id="fb-title" className="font-display text-3xl text-forest">
               دقة التسميع {percentLabel(acc)}
+              {analysis.uncertainWords > 0 ? <span className="block text-base font-sans text-muted">للكلمات المؤكدة فقط</span> : null}
             </h2>
             <p className="mt-1.5 text-[0.95rem] leading-7 text-ink/75" aria-live="polite">
-              {encouragement(acc)}
+              {analysis.uncertainWords > 0 ? "لم نتأكد من بعض الكلمات، فلا نحكم على تلاوتك فيها. أعد الجزء المظلّل بخط منقّط." : encouragement(acc)}
             </p>
             <div className="mt-4 flex flex-wrap justify-center sm:justify-start gap-2">
               <span className="inline-flex items-center gap-2 rounded-full bg-olive-100 px-3.5 py-1.5 text-sm text-olive-600">
@@ -84,11 +87,23 @@ export function RecitationFeedback({
                   تحتاج مراجعة {ayahCountLabel(needs)}
                 </span>
               ) : null}
+              {unsure ? (
+                <span className="inline-flex items-center gap-2 rounded-full bg-parchment px-3.5 py-1.5 text-sm text-ink/75 ring-1 ring-sand/40">
+                  <Icon name="info" size={16} />
+                  لم نتأكد من {ayahCountLabel(unsure)} — أعد الجزء
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
         <div className="relative mt-5 border-t border-sand/25 pt-4 space-y-1">
           <TextOnlyNote />
+          {analysis.uncertainWords > 0 ? (
+            <p className="flex items-start gap-2 text-xs leading-6 text-ink/75">
+              <Icon name="info" size={15} className="mt-1 text-sand-700" />
+              لم نتأكد من {toArabicDigits(analysis.uncertainWords)} {analysis.uncertainWords === 1 ? "كلمة" : analysis.uncertainWords <= 10 ? "كلمات" : "كلمة"} — قد يكون الخلل في تعرّف الصوت لا في تلاوتك، لذلك لم تُحتسب عليك. أعد هذا الجزء للتأكد.
+            </p>
+          ) : null}
           {note}
         </div>
       </section>
@@ -102,6 +117,11 @@ export function RecitationFeedback({
           <li className="inline-flex items-center gap-1.5">
             <span className="w-5 h-3.5 rounded border border-dashed border-sand" aria-hidden /> كلمة لم تُقرأ
           </li>
+          {analysis.uncertainWords > 0 ? (
+            <li className="inline-flex items-center gap-1.5">
+              <span className="w-5 border-b-2 border-dotted border-sand-700" aria-hidden /> لم نتأكد
+            </li>
+          ) : null}
         </ul>
         {needs && mastered ? (
           <Segmented
@@ -151,6 +171,8 @@ function AyahResult({ result }: { result: AyahRecitationResult }) {
       </Badge>
     ) : result.status === "needs-review" ? (
       <Badge tone="sand">تحتاج مراجعة</Badge>
+    ) : result.status === "uncertain" ? (
+      <Badge tone="muted">لم نتأكد — أعد هذا الجزء</Badge>
     ) : (
       <Badge tone="terracotta">لم تُسمَّع بعد</Badge>
     );
@@ -166,7 +188,7 @@ function AyahResult({ result }: { result: AyahRecitationResult }) {
       <header className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-forest">الآية {n}</span>
         {statusBadge}
-        <span className="ms-auto text-xs text-muted num">{percentLabel(result.accuracy)}</span>
+        <span className="ms-auto text-xs text-muted num">{result.status === "uncertain" ? "—" : percentLabel(result.accuracy)}</span>
       </header>
 
       <p lang="ar" dir="rtl" className="quran-text mt-1">
@@ -196,6 +218,7 @@ function Word({ word }: { word: AyahRecitationResult["words"][number] }) {
   const [open, setOpen] = useState(false);
   const tipId = useId();
   if (word.state === "ok") return <span>{word.text}</span>;
+  const unsure = word.state === "uncertain";
   if (word.state === "omitted")
     return (
       <span className="rounded-lg border border-dashed border-sand bg-sand-100/40 px-1 text-ink/70">
@@ -208,14 +231,19 @@ function Word({ word }: { word: AyahRecitationResult["words"][number] }) {
       <button
         type="button"
         aria-describedby={open ? tipId : undefined}
-        aria-label={`${word.text} — سُمِع: ${word.heard ?? "؟"}`}
+        aria-label={`${word.text} — سُمِع: ${word.heard ?? "؟"}${unsure ? " — لم نتأكد" : ""}`}
         onClick={() => setOpen((v) => !v)}
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
-        className="underline decoration-terracotta decoration-2 underline-offset-[0.45em] rounded-md hover:bg-terracotta-50 focus-visible:bg-terracotta-50"
+        className={cn(
+          "underline decoration-2 underline-offset-[0.45em] rounded-md",
+          unsure
+            ? "decoration-dotted decoration-sand-700 hover:bg-sand-100/60 focus-visible:bg-sand-100/60"
+            : "decoration-terracotta hover:bg-terracotta-50 focus-visible:bg-terracotta-50",
+        )}
       >
         {word.text}
       </button>
@@ -225,7 +253,7 @@ function Word({ word }: { word: AyahRecitationResult["words"][number] }) {
           role="tooltip"
           className="absolute bottom-full start-1/2 z-20 mb-1 -translate-x-1/2 rtl:translate-x-1/2 whitespace-nowrap rounded-xl bg-forest px-3 py-1.5 font-sans text-xs leading-5 text-cream shadow-[var(--shadow-lift)] animate-rise"
         >
-          سُمِع: «{word.heard ?? "؟"}»
+          سُمِع: «{word.heard ?? "؟"}»{unsure ? " — لم نتأكد، أعد هذا الجزء" : ""}
         </span>
       ) : null}
     </span>

@@ -21,7 +21,9 @@ export type SpeechErrorCode =
   | "too-long" // payload_too_large
   | "range-too-large" // range_too_large
   | "unsupported-format" // unsupported_media_type
-  | "no-speech" // the session ended with an empty transcript
+  | "no-speech" // the session ended with an empty transcript AND the microphone level stayed low (real silence)
+  | "no-audio" // the recorder produced no audio data at all (nothing to send)
+  | "engine-no-result" // sound was clearly picked up, but recognition returned no text
   | "unknown";
 
 export class SpeechError extends Error {

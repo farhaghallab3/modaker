@@ -18,6 +18,8 @@ export interface RecitationSummary {
   mistakes: number;
   mastered: number;
   needsReview: number;
+  /** ayahs we could not judge (recognizer doubt) — nothing was scored against the learner */
+  uncertain?: number;
 }
 
 export interface Goals {

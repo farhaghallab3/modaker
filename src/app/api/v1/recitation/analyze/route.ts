@@ -6,6 +6,7 @@
  */
 import { analyzeRecitation } from "@/lib/recitation/compare";
 import { optionalSession } from "@/server/auth";
+import { env } from "@/server/env";
 import { apiError } from "@/server/errors";
 import { enforceRateLimit, json, readJson, route } from "@/server/http";
 import { getQuranProvider } from "@/server/quran/provider";
@@ -25,6 +26,12 @@ export const POST = route(async (req) => {
 
   const ayahs = await getQuranProvider().getAyahs(range);
   const analysis = analyzeRecitation(ayahs, transcript, range);
+  if (env.sttTrace()) {
+    // Developer diagnostics only (STT_TRACE=on): the pipeline stages for this analysis.
+    const { traceRecitation } = await import("@/lib/recitation/trace");
+    const t = traceRecitation(ayahs, transcript, range);
+    console.info("[stt-trace] analyze", JSON.stringify({ normalized: t.normalized, alignment: t.alignment, mistakes: analysis.mistakes, perAyah: analysis.ayahs.map((a) => ({ k: a.key, acc: a.accuracy, status: a.status })) }));
+  }
 
   if (session) {
     // Best-effort history for signed-in users (scores and mistakes only; no audio, no transcript).

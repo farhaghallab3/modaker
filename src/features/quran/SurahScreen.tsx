@@ -21,7 +21,9 @@ import { getSurahMeta, revelationLabel, toArabicDigits } from "@/lib/quran/surah
 import { memorizedRanges } from "@/lib/recitation/ranges";
 import { ayahCountLabel, percentLabel } from "@/lib/review/labels";
 import { useApp } from "@/lib/store/AppProvider";
-import { reviewQueue, surahProgress } from "@/lib/store/selectors";
+import { needsReviewLabel } from "@/lib/review/labels";
+import { isMemorized } from "@/lib/review/learning";
+import { continuation, reviewQueue, surahProgress } from "@/lib/store/selectors";
 import type { Ayah, AyahStatus, SurahMeta, SurahText } from "@/lib/types";
 import { SourceError, VerseSkeleton } from "./states";
 
@@ -58,7 +60,7 @@ function SurahView({ meta }: { meta: SurahMeta }) {
 
   const prog = surahProgress(state, n);
   const memorizedSet = useMemo(
-    () => new Set(Object.values(state.progress).filter((p) => p.surah === n && p.status !== "new" && p.status !== "learning").map((p) => p.ayah)),
+    () => new Set(Object.values(state.progress).filter((p) => p.surah === n && isMemorized(p)).map((p) => p.ayah)),
     [state.progress, n],
   );
   const firstNew = useMemo(() => {
@@ -66,7 +68,9 @@ function SurahView({ meta }: { meta: SurahMeta }) {
     while (a <= meta.ayahCount && memorizedSet.has(a)) a++;
     return Math.min(a, meta.ayahCount);
   }, [memorizedSet, meta.ayahCount]);
-  const startAyah = state.resume?.surah === n ? state.resume.ayah : firstNew;
+  // Where to continue is derived from what is memorized, not from a possibly stale stored pointer.
+  const cont = continuation(state);
+  const startAyah = cont.kind === "continue" && cont.surah === n ? cont.ayah : firstNew;
 
   const reciteHref = useMemo(() => {
     const due = reviewQueue(state).find((r) => r.surah === n && (r.bucket === "today" || r.bucket === "weak"));
@@ -118,20 +122,25 @@ function SurahView({ meta }: { meta: SurahMeta }) {
               </span>
             </p>
           </div>
-          <ProgressRing value={prog.ratio} size={76} stroke={6} label={`حفظت ${percentLabel(prog.ratio)} من السورة`}>
-            <span className="text-sm font-semibold text-forest num">{percentLabel(prog.ratio)}</span>
+          <ProgressRing value={prog.ratio} size={76} stroke={6} label={`${percentLabel(prog.ratio)} من الحفظ — ${ayahCountLabel(prog.memorized)} محفوظة من ${toArabicDigits(meta.ayahCount)}`}>
+            <span>
+              <span className="block text-sm font-semibold text-forest num leading-tight">{percentLabel(prog.ratio)}</span>
+              <span className="block text-[0.58rem] text-muted leading-tight">من الحفظ</span>
+            </span>
           </ProgressRing>
         </div>
         <div className="relative mt-6 flex flex-wrap gap-2">
-          <ButtonLink href={`/memorize/${n}?from=${startAyah}`} icon="leaf" className="flex-1 sm:flex-none">
-            احفظ
-          </ButtonLink>
+          {prog.complete ? null : (
+            <ButtonLink href={`/memorize/${n}?from=${startAyah}`} icon="leaf" className="flex-1 sm:flex-none">
+              احفظ
+            </ButtonLink>
+          )}
           <ButtonLink href={reciteHref} variant="secondary" icon="mic" className="flex-1 sm:flex-none">
             سمّع
           </ButtonLink>
           <p className="w-full sm:w-auto sm:ms-auto self-center text-xs text-muted">
             {prog.memorized
-              ? `حفظت ${ayahCountLabel(prog.memorized)} من ${toArabicDigits(meta.ayahCount)}`
+              ? `${prog.complete ? "أتممت حفظ السورة — " : ""}${toArabicDigits(prog.memorized)} من ${toArabicDigits(meta.ayahCount)} آية محفوظة${prog.weak ? ` · ${needsReviewLabel(prog.weak)}` : ""}`
               : "لم تبدأ حفظها بعد"}
           </p>
         </div>
@@ -181,7 +190,8 @@ function ReadingPanel({
   const audio = useAyahAudio(ayahs);
   const [flashAyah, setFlashAyah] = useState<number | null>(null);
   const bookmarks = useMemo(() => new Set(state.bookmarks.map((b) => b.key)), [state.bookmarks]);
-  const resumeAyah = state.resume?.surah === meta.number ? state.resume.ayah : null;
+  const resumeCont = continuation(state);
+  const resumeAyah = resumeCont.kind === "continue" && resumeCont.surah === meta.number ? resumeCont.ayah : null;
 
   useEffect(() => {
     if (!focusAyah || !ayahs.length) return;

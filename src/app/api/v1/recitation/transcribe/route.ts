@@ -13,7 +13,9 @@ import { ApiError, ProviderError, apiError } from "@/server/errors";
 import { enforceRateLimit, json, route } from "@/server/http";
 import { getRecordingStore, retentionFor } from "@/server/recordings/store";
 import { ALLOWED_AUDIO_MIME, baseMime } from "@/server/stt/mime";
+import { buildSttPrompt } from "@/server/stt/prompt";
 import { getSttProvider, sttConfigured } from "@/server/stt/provider";
+import { getSurahMeta } from "@/lib/quran/surahs";
 import { MAX_RECITATION_AYAHS, ayahRangeSchema } from "@/server/validation";
 
 export const runtime = "nodejs";
@@ -53,8 +55,25 @@ export const POST = route(async (req) => {
   const provider = getSttProvider();
   let transcript;
   try {
-    // No verse text is passed as a prompt: the transcript must reflect what was said.
-    transcript = await provider.transcribe({ audio: buffer, mimeType, language: "ar" });
+    // The prompt only describes the KIND of audio (and at most the surah's name). The expected verse
+    // text is never sent: the transcript must reflect what was said, not what was expected.
+    const prompt = buildSttPrompt(env.sttPrompt(), { surahName: getSurahMeta(range.surah)?.nameAr });
+    transcript = await provider.transcribe({ audio: buffer, mimeType, language: "ar", prompt });
+    if (env.sttTrace()) {
+      // Developer diagnostics only (STT_TRACE=on): transcript TEXT and request parameters — never audio or keys.
+      console.info(
+        "[stt-trace] transcribe",
+        JSON.stringify({
+          provider: transcript.provider,
+          prompt: prompt ?? null,
+          bytes: buffer.byteLength,
+          durationSec: transcript.durationSec,
+          text: transcript.text,
+          words: transcript.words?.map((w) => ({ t: w.text, c: w.confidence, s: w.start })),
+          evidence: transcript.evidence,
+        }),
+      );
+    }
   } catch (e) {
     if (e instanceof ProviderError) {
       console.error(e.message);

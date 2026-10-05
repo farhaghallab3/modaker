@@ -4,7 +4,7 @@ Arabic-first (RTL) Quran memorization companion: **احفظ · سمّع · اف�
 Next.js 15 (App Router) · TypeScript · Tailwind CSS v4 · PostgreSQL + pgvector (Prisma).
 
 - Product, IA, frontend, design system, journeys → [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- Religious safety, sourcing, content review workflow → [`docs/ARCHITECTURE-safety.md`](docs/ARCHITECTURE-safety.md) · privacy inventory → [`docs/PRIVACY-DATA-INVENTORY.md`](docs/PRIVACY-DATA-INVENTORY.md) · backlog (fiqh gap, contextual suggestions) → [`docs/BACKLOG.md`](docs/BACKLOG.md) · Quran-source migration plan → [`docs/QURAN-SOURCE-MIGRATION-PLAN.md`](docs/QURAN-SOURCE-MIGRATION-PLAN.md)
+- Religious safety, sourcing, content review workflow → [`docs/ARCHITECTURE-safety.md`](docs/ARCHITECTURE-safety.md) · privacy inventory → [`docs/PRIVACY-DATA-INVENTORY.md`](docs/PRIVACY-DATA-INVENTORY.md) · learning model (completion vs review vs mastery, resume) → [`docs/LEARNING-MODEL.md`](docs/LEARNING-MODEL.md) · speech recognition, uncertainty & limits → [`docs/STT-QURAN.md`](docs/STT-QURAN.md) · backlog (fiqh gap, contextual suggestions) → [`docs/BACKLOG.md`](docs/BACKLOG.md) · Quran-source migration plan → [`docs/QURAN-SOURCE-MIGRATION-PLAN.md`](docs/QURAN-SOURCE-MIGRATION-PLAN.md)
 - Database, REST API, AI/RAG, speech, notifications, security → [`docs/ARCHITECTURE-backend.md`](docs/ARCHITECTURE-backend.md)
 
 ## Run it
