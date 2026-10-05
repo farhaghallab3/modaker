@@ -1,0 +1,211 @@
+@import "tailwindcss";
+
+/* Class-free dark variant driven by <html data-theme="dark"> (see src/lib/theme.ts). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ───────────────────────────────────────────────────────────────
+   مُدّكِر design tokens
+   Cream surfaces · forest for primary · olive for progress/success
+   sand + terracotta as sparse accents.
+   ─────────────────────────────────────────────────────────────── */
+@theme {
+  --color-forest: #283618;
+  --color-forest-700: #34461f;
+  --color-forest-50: #eef1e8;
+  --color-olive: #606c38;
+  --color-olive-600: #525d2f;
+  --color-olive-100: #e6e9d6;
+  --color-cream: #fefae0;
+  --color-sand: #dda15e;
+  --color-sand-100: #f8ead7;
+  --color-sand-700: #8a5a1f;
+  --color-sand-800: #7a4f1b;
+  --color-terracotta: #bc6c25;
+  --color-terracotta-600: #a95f1f;
+  --color-terracotta-50: #f7ebdf;
+  --color-paper: #fffdf6;
+  --color-parchment: #f4f1e6;
+  --color-ink: #1d2218;
+  --color-muted: #74776c;
+  --color-sage: #dde3cf;
+  --color-line: #e7e3d3;
+  /* Overlays on media and behind dialogs: stays dark in both themes. */
+  --color-scrim: #1d2218;
+  --color-skeleton-hi: #ebe7d8;
+
+  --font-sans: var(--font-plex), "IBM Plex Sans Arabic", "Noto Kufi Arabic", system-ui, sans-serif;
+  --font-quran: var(--font-amiri), "Amiri", "Amiri Quran", serif;
+  --font-display: var(--font-amiri), "Amiri", serif;
+
+  --radius-card: 1.25rem;
+  --shadow-soft: 0 1px 2px rgb(29 34 24 / 0.04), 0 6px 24px -12px rgb(29 34 24 / 0.12);
+  --shadow-lift: 0 2px 4px rgb(29 34 24 / 0.05), 0 18px 40px -20px rgb(29 34 24 / 0.25);
+
+  --animate-breathe: breathe 2.4s ease-in-out infinite;
+  --animate-rise: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); opacity: 0.55; }
+    50% { transform: scale(1.18); opacity: 0.15; }
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes shimmer {
+    from { background-position: 150% 0; }
+    to { background-position: -50% 0; }
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Dark theme — deep warm greens instead of black, cream ink, gold accents.
+   Every utility reads these tokens, so components switch without dark: classes.
+   ─────────────────────────────────────────────────────────────── */
+:root { color-scheme: light; }
+
+/* Dark token set. Also re-applied on neutral surfaces so they stay dark when nested
+   inside a brand-coloured panel (which restores light tokens, below). */
+:root[data-theme="dark"],
+:root[data-theme="dark"] :is(.bg-paper, .bg-white, .bg-parchment) {
+  color-scheme: dark;
+  --color-paper: #12170d;
+  --color-white: #1a2113;
+  --color-parchment: #20291a;
+  --color-forest: #f3eed3;
+  --color-forest-700: #e2dcbd;
+  --color-forest-50: #232c18;
+  --color-olive: #a9b672;
+  --color-olive-600: #bcc788;
+  --color-olive-100: #283320;
+  /* Cream is a highlight surface in light mode; here it becomes a warm dark card.
+     Cream text only appears on brand panels, which restore the real cream below. */
+  --color-cream: #25271a;
+  --color-sand: #dda15e;
+  --color-sand-100: #3a2f1e;
+  --color-sand-700: #e8b778;
+  --color-sand-800: #efc58f;
+  --color-terracotta: #dc8a48;
+  --color-terracotta-600: #c4762f;
+  --color-terracotta-50: #3a2617;
+  --color-ink: #e9e5cf;
+  --color-muted: #a3a690;
+  --color-sage: #34402a;
+  --color-line: #2c3623;
+  --color-skeleton-hi: #2a3421;
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.25), 0 6px 24px -12px rgb(0 0 0 / 0.5);
+  --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.3), 0 18px 40px -20px rgb(0 0 0 / 0.65);
+}
+
+/* Brand-coloured surfaces (forest panels, olive/gold/terracotta fills) keep their
+   light-theme look in dark mode, so the content designed for them stays legible. */
+:root[data-theme="dark"] :is(.bg-forest, .bg-olive, .bg-sand, .bg-terracotta) {
+  color-scheme: light;
+  --color-paper: #fffdf6;
+  --color-white: #ffffff;
+  --color-parchment: #f4f1e6;
+  --color-forest: #283618;
+  --color-forest-700: #34461f;
+  --color-forest-50: #eef1e8;
+  --color-olive: #606c38;
+  --color-olive-600: #525d2f;
+  --color-olive-100: #e6e9d6;
+  --color-cream: #fefae0;
+  --color-sand-100: #f8ead7;
+  --color-sand-700: #8a5a1f;
+  --color-sand-800: #7a4f1b;
+  --color-terracotta: #bc6c25;
+  --color-terracotta-600: #a95f1f;
+  --color-terracotta-50: #f7ebdf;
+  --color-ink: #1d2218;
+  --color-muted: #74776c;
+  --color-sage: #dde3cf;
+  --color-line: #e7e3d3;
+}
+
+/* Theme-specific logo variants (provided assets; never inverted or filtered). */
+.brand-mark-dark { display: none; }
+:root[data-theme="dark"] .brand-mark-light { display: none; }
+:root[data-theme="dark"] .brand-mark-dark { display: block; }
+
+/* Brief cross-fade only while the user switches theme. */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, fill 0.3s ease, stroke 0.3s ease !important;
+}
+
+@layer base {
+  html {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    font-family: var(--font-sans);
+    font-feature-settings: "kern";
+    text-rendering: optimizeLegibility;
+    min-height: 100dvh;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-olive);
+    outline-offset: 3px;
+    border-radius: 0.5rem;
+  }
+  ::selection {
+    background: var(--color-sand-100);
+    color: var(--color-forest);
+  }
+  button, [role="button"] { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+}
+
+@layer components {
+  /* Quran text: generous leading, never cramped, never justified awkwardly. */
+  .quran-text {
+    font-family: var(--font-quran);
+    line-height: 2.35;
+    font-size: clamp(1.45rem, 1.15rem + 1.1vw, 2.05rem);
+    color: var(--color-ink);
+    word-spacing: 0.08em;
+  }
+  .ayah-marker {
+    display: inline-grid;
+    place-items: center;
+    min-width: 2.1em;
+    height: 2.1em;
+    margin-inline: 0.25em;
+    font-family: var(--font-quran);
+    font-size: 0.62em;
+    color: var(--color-olive);
+    background: radial-gradient(circle, transparent 54%, var(--color-sand) 55% 60%, transparent 61%);
+    vertical-align: middle;
+  }
+
+  /* Very subtle eight-point-star lattice. Decoration only. */
+  .pattern-girih {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'%3E%3Cg fill='none' stroke='%23606C38' stroke-width='0.7' opacity='0.5'%3E%3Cpath d='M36 6l8.5 21.5L66 36l-21.5 8.5L36 66l-8.5-21.5L6 36l21.5-8.5z'/%3E%3Cpath d='M15 15h42v42H15z' transform='rotate(45 36 36)'/%3E%3Ccircle cx='36' cy='36' r='6'/%3E%3C/g%3E%3C/svg%3E");
+    background-size: 72px 72px;
+  }
+
+  .skeleton {
+    background: linear-gradient(90deg, var(--color-parchment) 25%, var(--color-skeleton-hi) 50%, var(--color-parchment) 75%);
+    background-size: 200% 100%;
+    animation: var(--animate-shimmer);
+    border-radius: 0.6rem;
+  }
+
+  .hairline { border-color: var(--color-line); }
+  .num { font-variant-numeric: tabular-nums; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

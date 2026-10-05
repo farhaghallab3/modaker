@@ -1,0 +1,620 @@
+// مُدّكِر — PostgreSQL schema (Prisma 6 + pgvector).
+//
+// Conventions
+//  - Every user-owned row cascades on User delete (account deletion = one DELETE).
+//  - Quran text lives only in `Ayah`, filled by scripts/import-quran.ts from a
+//    verified source and checksummed. Nothing else stores verse text.
+//  - App-level hyphenated enum values ("needs-review") are stored with "_"
+//    and mapped in src/server/user/mappers.ts.
+//  - pgvector: KnowledgeChunk.embedding is vector(1536). Create the ANN index in
+//    a migration (Prisma cannot express it):
+//      CREATE INDEX knowledge_chunk_embedding_hnsw ON "KnowledgeChunk"
+//        USING hnsw (embedding vector_cosine_ops);
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ── Enums ──────────────────────────────────────────────────────────────────
+
+enum ExperienceLevel {
+  beginner
+  intermediate
+  advanced
+}
+
+enum MemorizedAmount {
+  none
+  juz_amma
+  few_juz
+  half
+  most
+  all
+}
+
+enum Locale {
+  ar
+  en
+}
+
+enum Revelation {
+  meccan
+  medinan
+}
+
+enum AyahStatus {
+  new
+  learning
+  memorized
+  weak
+  mastered
+}
+
+enum ResumeMode {
+  memorize
+  recite
+  read
+}
+
+enum MistakeType {
+  omitted
+  added
+  incorrect
+  order
+  hesitation
+}
+
+enum RecitationAyahStatus {
+  mastered
+  needs_review
+  missed
+}
+
+enum ReviewBucket {
+  today
+  weak
+  mastered
+  upcoming
+}
+
+enum ContentStatus {
+  verified
+  demo
+}
+
+enum KnowledgeKind {
+  quran
+  tafsir
+  asbab
+  translation
+  curated
+}
+
+enum ChatRole {
+  user
+  assistant
+}
+
+enum AnswerKind {
+  grounded
+  insufficient
+  needs_scholar
+  quran_text
+  unavailable
+}
+
+enum NotificationKind {
+  daily_wird
+  review_due
+  welcome_back
+  goal_complete
+  streak
+}
+
+enum ReminderFrequency {
+  daily
+  weekdays
+  custom
+}
+
+enum PushPlatform {
+  web
+  fcm
+  apns
+}
+
+// ── Users & auth ──────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  profile                UserProfile?
+  sessions               Session[]
+  stateSnapshot          UserStateSnapshot?
+  goals                  MemorizationGoal[]
+  progress               MemorizationProgress[]
+  resumePoint            ResumePoint?
+  memorizationSessions   MemorizationSession[]
+  recitationSessions     RecitationSession[]
+  reviewSchedules        ReviewSchedule[]
+  reviewAttempts         ReviewAttempt[]
+  conversations          ChatConversation[]
+  notificationPreference NotificationPreference?
+  notifications          Notification[]
+  pushSubscriptions      PushSubscription[]
+  bookmarks              Bookmark[]
+  dailyActivity          DailyActivity[]
+}
+
+model UserProfile {
+  userId               String          @id
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                 String
+  level                ExperienceLevel @default(beginner)
+  memorizedAmount      MemorizedAmount @default(none)
+  dailyTargetAyahs     Int             @default(5)
+  reviewSessionsPerDay Int             @default(1)
+  reminderTime         String          @default("05:30") // HH:mm local
+  locale               Locale          @default(ar)
+  timeZone             String          @default("Asia/Riyadh") // IANA, used by the reminder cron
+  onboarded            Boolean         @default(false)
+  // Privacy: raw audio is never kept unless the user opts in AND the server allows it.
+  keepRecordings       Boolean         @default(false)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+}
+
+/// Server-side sessions (the cookie carries a signed session id) so logout and
+/// account deletion revoke access immediately.
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  userAgent String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// The client's full UserState document (sync source of truth for GET
+/// /me/state). PUT also projects it into the relational tables below.
+model UserStateSnapshot {
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  version   Int      @default(1)
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+// ── Quran (verified, imported) ────────────────────────────────────────────
+
+model Surah {
+  number     Int        @id
+  nameAr     String
+  nameEn     String
+  ayahCount  Int
+  revelation Revelation
+  sourceId   String // e.g. "quran-com:uthmani" | "tanzil:uthmani"
+  checksum   String // sha256 over all ayahs, see src/server/quran/verification.ts
+  importedAt DateTime   @default(now())
+  ayahs      Ayah[]
+}
+
+model Ayah {
+  id          Int     @id @default(autoincrement())
+  surahNumber Int
+  surah       Surah   @relation(fields: [surahNumber], references: [number], onDelete: Cascade)
+  number      Int
+  key         String  @unique // "19:32"
+  globalIndex Int     @unique // 1..6236
+  textUthmani String
+  textSimple  String?
+  page        Int?
+  juz         Int?
+  sourceId    String
+  checksum    String
+
+  @@unique([surahNumber, number])
+  @@index([page])
+  @@index([juz])
+}
+
+// ── Memorization ──────────────────────────────────────────────────────────
+
+model MemorizationGoal {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyAyahs  Int
+  weeklyDays  Int
+  targetSurah Int?
+  targetDate  DateTime?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  @@index([userId, active])
+}
+
+model MemorizationProgress {
+  id             String     @id @default(cuid())
+  userId         String
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  surah          Int
+  ayah           Int
+  status         AyahStatus @default(new)
+  ease           Float      @default(2.3)
+  intervalDays   Float      @default(0)
+  streak         Int        @default(0)
+  successCount   Int        @default(0)
+  mistakeCount   Int        @default(0)
+  accuracy       Float?
+  memorizedAt    DateTime?
+  lastReviewedAt DateTime?
+  nextReviewAt   DateTime?
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([userId, surah, ayah])
+  @@index([userId, nextReviewAt])
+  @@index([userId, status])
+}
+
+model ResumePoint {
+  userId    String     @id
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  surah     Int
+  ayah      Int
+  mode      ResumeMode @default(memorize)
+  updatedAt DateTime   @updatedAt
+}
+
+model MemorizationSession {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  surah          Int
+  fromAyah       Int
+  toAyah         Int
+  ayahsMemorized Int       @default(0)
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+
+  @@index([userId, startedAt])
+}
+
+// ── Recitation ────────────────────────────────────────────────────────────
+
+model RecitationSession {
+  id              String               @id @default(cuid())
+  userId          String
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  surah           Int
+  fromAyah        Int
+  toAyah          Int
+  provider        String // STT provider id, e.g. "openai:whisper-1" | "browser"
+  durationSec     Float?
+  accuracy        Float?
+  /// Only set when the user opted in AND RECORDING_RETENTION_DAYS > 0.
+  audioStorageKey String?
+  audioMimeType   String?
+  audioExpiresAt  DateTime?
+  createdAt       DateTime             @default(now())
+  results         RecitationResult[]
+  mistakes        RecitationMistake[]
+
+  @@index([userId, createdAt])
+  @@index([audioExpiresAt])
+}
+
+model RecitationResult {
+  id        String               @id @default(cuid())
+  sessionId String
+  session   RecitationSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  ayahKey   String
+  ayah      Int
+  accuracy  Float
+  status    RecitationAyahStatus
+
+  @@index([sessionId])
+}
+
+model RecitationMistake {
+  id        String            @id @default(cuid())
+  sessionId String
+  session   RecitationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  type      MistakeType
+  ayahKey   String
+  wordIndex Int?
+  expected  String?
+  heard     String?
+  pauseSec  Float?
+
+  @@index([sessionId])
+}
+
+// ── Review ────────────────────────────────────────────────────────────────
+
+model ReviewSchedule {
+  id        String          @id @default(cuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  surah     Int
+  fromAyah  Int
+  toAyah    Int
+  dueAt     DateTime
+  priority  Float           @default(0)
+  bucket    ReviewBucket
+  attempts  ReviewAttempt[]
+  createdAt DateTime        @default(now())
+
+  @@index([userId, dueAt])
+}
+
+model ReviewAttempt {
+  id         String          @id @default(cuid())
+  userId     String
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scheduleId String?
+  schedule   ReviewSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  surah      Int
+  fromAyah   Int
+  toAyah     Int
+  accuracy   Float
+  mistakes   Int
+  grade      Int
+  createdAt  DateTime        @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// ── Content: stories & videos (editorial, reviewed) ───────────────────────
+
+model Story {
+  id            String               @id @default(cuid())
+  slug          String               @unique
+  title         String
+  subtitle      String
+  intro         String
+  surahs        Int[]
+  accent        String
+  contentStatus ContentStatus        @default(demo)
+  published     Boolean              @default(true)
+  chapters      StoryChapter[]
+  ayahRefs      StoryAyahReference[]
+  videos        Video[]
+  /// SourceRef[] shown under the story
+  references    Json                 @default("[]")
+  updatedAt     DateTime             @updatedAt
+}
+
+model StoryChapter {
+  id       String               @id @default(cuid())
+  storyId  String
+  story    Story                @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  order    Int
+  title    String
+  summary  String
+  ayahRefs StoryAyahReference[]
+
+  @@unique([storyId, order])
+}
+
+/// Links a story/chapter to ayah ranges (numbers only — text comes from Ayah).
+model StoryAyahReference {
+  id        String        @id @default(cuid())
+  storyId   String
+  story     Story         @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  chapterId String?
+  chapter   StoryChapter? @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  surah     Int
+  fromAyah  Int
+  toAyah    Int
+
+  @@index([surah, fromAyah])
+  @@index([storyId])
+}
+
+model Video {
+  id            String        @id
+  youtubeId     String?
+  title         String
+  channel       String
+  description   String
+  surah         Int?
+  fromAyah      Int?
+  toAyah        Int?
+  durationLabel String?
+  storyId       String?
+  story         Story?        @relation(fields: [storyId], references: [id], onDelete: SetNull)
+  contentStatus ContentStatus @default(demo)
+
+  @@index([surah])
+}
+
+// ── Tafsir & knowledge base (approved sources only) ───────────────────────
+
+model TafsirSource {
+  id         String        @id // "tafsir:muyassar"
+  slug       String        @unique // "muyassar"
+  title      String
+  publisher  String
+  url        String?
+  language   String        @default("ar")
+  quranComId Int?
+  approved   Boolean       @default(false)
+  entries    TafsirEntry[]
+}
+
+model TafsirEntry {
+  id       String       @id @default(cuid())
+  sourceId String
+  source   TafsirSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  surah    Int
+  ayah     Int
+  key      String
+  text     String
+
+  @@unique([sourceId, surah, ayah])
+  @@index([surah])
+}
+
+model KnowledgeSource {
+  id        String           @id // matches src/server/rag/sources.ts
+  title     String
+  publisher String?
+  url       String?
+  kind      KnowledgeKind
+  approved  Boolean          @default(false)
+  editorial Boolean          @default(false)
+  chunks    KnowledgeChunk[]
+  updatedAt DateTime         @updatedAt
+}
+
+model KnowledgeChunk {
+  id          String                       @id @default(cuid())
+  sourceId    String
+  source      KnowledgeSource              @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  ref         String // display reference, e.g. "مريم 32"
+  ayahKey     String?
+  surah       Int?
+  ayahFrom    Int?
+  ayahTo      Int?
+  text        String
+  contentHash String
+  embedding   Unsupported("vector(1536)")?
+  createdAt   DateTime                     @default(now())
+
+  @@unique([sourceId, contentHash])
+  @@index([sourceId])
+  @@index([surah])
+}
+
+// ── Assistant conversations ───────────────────────────────────────────────
+
+model ChatConversation {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id             String           @id @default(cuid())
+  conversationId String
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           ChatRole
+  content        String
+  answerKind     AnswerKind?
+  provider       String?
+  createdAt      DateTime         @default(now())
+  citations      Citation[]
+
+  @@index([conversationId, createdAt])
+}
+
+model Citation {
+  id        String      @id @default(cuid())
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  sourceId  String
+  title     String
+  ref       String
+  excerpt   String
+  url       String?
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────
+
+model NotificationPreference {
+  userId        String            @id
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyReminder Boolean           @default(true)
+  reviewReminder Boolean          @default(true)
+  preferredTime String            @default("05:30")
+  frequency     ReminderFrequency @default(daily)
+  customDays    Int[]             @default([0, 1, 2, 3, 4, 5, 6])
+  pushEnabled   Boolean           @default(false)
+  quietFrom     String?
+  quietTo       String?
+  timeZone      String            @default("Asia/Riyadh")
+  updatedAt     DateTime          @updatedAt
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        NotificationKind
+  title       String
+  body        String
+  href        String?
+  read        Boolean          @default(false)
+  /// e.g. "daily-wird:2026-10-05" — prevents duplicate reminders per local day
+  dedupeKey   String?
+  deliveredVia String[]        @default([])
+  createdAt   DateTime         @default(now())
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, createdAt])
+}
+
+model PushSubscription {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform      PushPlatform @default(web)
+  /// Web Push endpoint URL, or the FCM/APNs device token for native apps.
+  endpoint      String       @unique
+  p256dh        String?
+  auth          String?
+  userAgent     String?
+  failureCount  Int          @default(0)
+  lastSuccessAt DateTime?
+  createdAt     DateTime     @default(now())
+
+  @@index([userId])
+}
+
+// ── Misc user data ────────────────────────────────────────────────────────
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String
+  surah     Int
+  ayah      Int
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, key])
+}
+
+model DailyActivity {
+  id          String @id @default(cuid())
+  userId      String
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date        String // YYYY-MM-DD (user-local)
+  memorized   Int    @default(0)
+  reviewed    Int    @default(0)
+  recitations Int    @default(0)
+
+  @@unique([userId, date])
+}

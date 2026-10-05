@@ -1,0 +1,11 @@
+node_modules
+.next
+.env
+.env.local
+data/cache
+preview/dist
+*.tsbuildinfo
+next-env.d.ts
+data/quran
+data/tafsir
+data/recordings

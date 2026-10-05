@@ -1,0 +1,28 @@
+export const ar = {
+  brand: { name: "مُدّكِر", tagline: "رفيقك الذكي في رحلة حفظ القرآن" },
+  nav: {
+    home: "الرئيسية",
+    mushaf: "المصحف",
+    recite: "التسميع",
+    review: "المراجعة",
+    more: "المزيد",
+    stories: "قصص القرآن",
+    videos: "المرئيات",
+    assistant: "اسأل مُدّكِر",
+    progress: "التقدم",
+    goals: "الأهداف",
+    notifications: "التنبيهات",
+    settings: "الإعدادات",
+  },
+  pillars: { memorize: "احفظ", recite: "سمّع", understand: "افهم", review: "راجع" },
+  common: {
+    continue: "متابعة",
+    retry: "إعادة المحاولة",
+    cancel: "إلغاء",
+    save: "حفظ",
+    loading: "جارٍ التحميل",
+    ayah: "الآية",
+    surah: "سورة",
+    demo: "نسخة تجريبية",
+  },
+};

@@ -1,0 +1,41 @@
+{
+  "name": "muzakkir",
+  "version": "0.1.0",
+  "private": true,
+  "description": "مُدّكِر — رفيقك الذكي في رحلة حفظ القرآن",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "db:migrate": "prisma migrate dev",
+    "db:seed:quran": "tsx scripts/import-quran.ts",
+    "db:seed:tafsir": "tsx scripts/import-tafsir.ts",
+    "db:seed:demo": "tsx scripts/seed-demo.ts",
+    "kb:index": "tsx scripts/index-knowledge.ts",
+    "quran:cache": "tsx scripts/import-quran.ts --json-only"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.1.0",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "web-push": "^3.6.7",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/web-push": "^3.6.4",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "^15.1.0",
+    "prisma": "^6.1.0",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
