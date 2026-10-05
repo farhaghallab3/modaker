@@ -3,6 +3,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Badge } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { storySpan } from "@/content/stories";
+import { needsDemoNotice } from "@/lib/content-state";
 import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import type { Story } from "@/lib/types";
 
@@ -69,7 +70,7 @@ export function StoryCard({ story, featured = false }: { story: Story; featured?
           <span className={cn("size-2 rounded-full", ACCENT_DOT[story.accent])} aria-hidden />
           {spanLabel(story)}
         </span>
-        {story.contentStatus === "demo" ? <Badge tone="muted">تجريبي</Badge> : null}
+        {needsDemoNotice(story) ? <Badge tone="muted">تجريبي</Badge> : null}
       </span>
       <span className="mt-5 block font-display text-2xl text-forest leading-snug">{story.title}</span>
       <span className="mt-1 block text-sm text-olive">{story.subtitle}</span>

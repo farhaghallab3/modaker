@@ -66,6 +66,8 @@ export class ApiRepository implements UserDataRepository {
   }
 }
 
+export const isApiMode = () => process.env.NEXT_PUBLIC_DATA_MODE === "api";
+
 export function createRepository(): UserDataRepository {
-  return process.env.NEXT_PUBLIC_DATA_MODE === "api" ? new ApiRepository() : new LocalRepository();
+  return isApiMode() ? new ApiRepository() : new LocalRepository();
 }

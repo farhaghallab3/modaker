@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/components/ui/primitives";
 import { api, ApiError } from "@/lib/api";
+import { AI_DISCLOSURE } from "@/lib/brand";
 import { getSurahMeta } from "@/lib/quran/surahs";
 import { uid } from "@/lib/store/state";
 import type { AssistantAnswer, ChatMessage } from "@/lib/types";
@@ -22,7 +23,8 @@ export const ASSISTANT_SUGGESTIONS = [
   "ما معنى هذه الكلمة؟",
 ] as const;
 
-export const ASSISTANT_DISCLAIMER = "يجيب مُدّكِر من مصادر معتمدة فقط ويذكر مرجع كل إجابة. للفتوى ارجع إلى أهل العلم.";
+/** AI disclosure (PDF: transparency) + the sourcing promise. Shown in the page and the side sheet. */
+export const ASSISTANT_DISCLAIMER = `${AI_DISCLOSURE} يذكر مُدّكِر مرجع كل إجابة.`;
 
 const MAX_LEN = 1000;
 

@@ -84,9 +84,51 @@ enum ReviewBucket {
   upcoming
 }
 
-enum ContentStatus {
-  verified
-  demo
+/// Access roles. `content_reviewer` approves religious content before publication; `admin` manages everything.
+enum Role {
+  user
+  content_reviewer
+  admin
+}
+
+/// Editorial approval state. Independent of `isDemo`, which describes the NATURE of the content.
+/// Only `published` content may be shown as reviewed or used by the assistant.
+enum ReviewState {
+  draft
+  in_review
+  approved
+  published
+  rejected
+  archived
+}
+
+enum ContentOrigin {
+  imported // verbatim from an approved external source
+  editorial // written by the team
+}
+
+enum AuthorityType {
+  official_institution
+  scholarly_foundation
+  community_platform
+  aggregator
+  editorial_team
+}
+
+enum ReviewAction {
+  submit
+  approve
+  reject
+  publish
+  archive
+  reopen
+}
+
+enum SafetyLevel {
+  A
+  B
+  C
+  D
 }
 
 enum KnowledgeKind {
@@ -95,6 +137,11 @@ enum KnowledgeKind {
   asbab
   translation
   curated
+  hadith
+  seerah
+  glossary
+  /// General fiqh from approved sources (positions by madhhab, incl. disagreement). Never a personal fatwa.
+  fiqh
 }
 
 enum ChatRole {
@@ -136,6 +183,7 @@ model User {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
+  role         Role     @default(user)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -154,6 +202,7 @@ model User {
   notifications          Notification[]
   pushSubscriptions      PushSubscription[]
   bookmarks              Bookmark[]
+  reviewEvents           ContentReviewEvent[]
   dailyActivity          DailyActivity[]
 }
 
@@ -389,8 +438,16 @@ model Story {
   intro         String
   surahs        Int[]
   accent        String
-  contentStatus ContentStatus        @default(demo)
-  published     Boolean              @default(true)
+  /// NATURE of the content: placeholder/demo copy that has not been reviewed.
+  isDemo        Boolean              @default(false)
+  /// Editorial approval. Demo content stays `draft` until it is replaced by reviewed content.
+  reviewState   ReviewState          @default(draft)
+  origin        ContentOrigin        @default(editorial)
+  authorId      String?
+  reviewerId    String?
+  reviewedAt    DateTime?
+  publishedAt   DateTime?
+  reviewNote    String?
   chapters      StoryChapter[]
   ayahRefs      StoryAyahReference[]
   videos        Video[]
@@ -407,6 +464,15 @@ model StoryChapter {
   title    String
   summary  String
   ayahRefs StoryAyahReference[]
+
+  isDemo      Boolean       @default(false)
+  reviewState ReviewState   @default(draft)
+  origin      ContentOrigin @default(editorial)
+  authorId    String?
+  reviewerId  String?
+  reviewedAt  DateTime?
+  publishedAt DateTime?
+  reviewNote  String?
 
   @@unique([storyId, order])
 }
@@ -438,7 +504,14 @@ model Video {
   durationLabel String?
   storyId       String?
   story         Story?        @relation(fields: [storyId], references: [id], onDelete: SetNull)
-  contentStatus ContentStatus @default(demo)
+  isDemo        Boolean       @default(false)
+  reviewState   ReviewState   @default(draft)
+  origin        ContentOrigin @default(editorial)
+  authorId      String?
+  reviewerId    String?
+  reviewedAt    DateTime?
+  publishedAt   DateTime?
+  reviewNote    String?
 
   @@index([surah])
 }
@@ -470,16 +543,35 @@ model TafsirEntry {
   @@index([surah])
 }
 
+/// Source registry. `enabled` AND reviewState in (approved, published) are both required before
+/// anything from a source can be retrieved. No credentials are ever stored here (env only).
 model KnowledgeSource {
-  id        String           @id // matches src/server/rag/sources.ts
-  title     String
-  publisher String?
-  url       String?
-  kind      KnowledgeKind
-  approved  Boolean          @default(false)
-  editorial Boolean          @default(false)
-  chunks    KnowledgeChunk[]
-  updatedAt DateTime         @updatedAt
+  id                   String           @id // matches src/server/rag/sources.ts
+  title                String
+  publisher            String?
+  url                  String?
+  kind                 KnowledgeKind
+  editorial            Boolean          @default(false)
+  /// 1 = Quran foundation … 4 = hadith & broader knowledge (see docs/ARCHITECTURE-safety.md)
+  tier                 Int              @default(4)
+  authorityType        AuthorityType?
+  languages            String[]         @default([])
+  apiAvailable         Boolean          @default(false)
+  apiDocsUrl           String?
+  mcpAvailable         Boolean          @default(false)
+  autoRetrievalSuitable Boolean         @default(false)
+  requiresHumanReview  Boolean          @default(true)
+  /// Terms of use / licensing note, and whether a person has verified them.
+  licenseNote          String?
+  licenseVerified      Boolean          @default(false)
+  enabled              Boolean          @default(false)
+  reviewState          ReviewState      @default(draft)
+  reviewerId           String?
+  reviewedAt           DateTime?
+  reviewNote           String?
+  lastSyncAt           DateTime?
+  chunks               KnowledgeChunk[]
+  updatedAt            DateTime         @updatedAt
 }
 
 model KnowledgeChunk {
@@ -493,6 +585,25 @@ model KnowledgeChunk {
   ayahTo      Int?
   text        String
   contentHash String
+  /// Provenance & review metadata. Retrieval requires reviewState = published AND isDemo = false.
+  title         String?
+  kind          KnowledgeKind?
+  author        String?
+  language      String         @default("ar")
+  url           String?
+  /// Source-specific locator, e.g. hadith "collection + number" or asbab entry id.
+  locator       String?
+  /// Hadith grading, populated only for hadith chunks (never inferred).
+  grade         String?
+  gradedBy      String?
+  /// For fiqh chunks: the school whose position this chunk states (a chunk states ONE position).
+  madhhab       String?
+  origin        ContentOrigin  @default(imported)
+  isDemo        Boolean        @default(false)
+  reviewState   ReviewState    @default(draft)
+  reviewerId    String?
+  reviewedAt    DateTime?
+  importBatchId String?
   embedding   Unsupported("vector(1536)")?
   createdAt   DateTime                     @default(now())
 
@@ -523,6 +634,12 @@ model ChatMessage {
   content        String
   answerKind     AnswerKind?
   provider       String?
+  safetyLevel    SafetyLevel?
+  answerType     String?
+  abstainReason  String?
+  generationUsed Boolean          @default(false)
+  /// Typed answer blocks (quran / hadith / source_quote / explanation / warning / referral / citation).
+  blocks         Json?
   createdAt      DateTime         @default(now())
   citations      Citation[]
 
@@ -538,6 +655,26 @@ model Citation {
   ref       String
   excerpt   String
   url       String?
+}
+
+// ── Content governance audit ──────────────────────────────────────────────
+
+/// Append-only log of every review-state transition. Written in the same transaction as the change.
+model ContentReviewEvent {
+  id         String       @id @default(cuid())
+  entityType String // story | story_chapter | video | knowledge_chunk | knowledge_source
+  entityId   String
+  action     ReviewAction
+  fromState  ReviewState
+  toState    ReviewState
+  actorId    String?
+  actor      User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorRole  Role?
+  note       String?
+  createdAt  DateTime     @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId])
 }
 
 // ── Notifications ─────────────────────────────────────────────────────────

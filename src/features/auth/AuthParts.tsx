@@ -32,6 +32,8 @@ export function TextField({
           aria-describedby={describedBy}
           aria-invalid={error ? true : undefined}
           className={cn(inputClass, error && "ring-terracotta/60!", className)}
+          // Browser extensions (password managers, temp-mail) inject attributes into auth fields before hydration.
+          suppressHydrationWarning
           {...input}
         />
       )}
@@ -56,6 +58,7 @@ export function PasswordField({
             aria-describedby={describedBy}
             aria-invalid={error ? true : undefined}
             className={cn(inputClass, "pe-12", error && "ring-terracotta/60!")}
+            suppressHydrationWarning
             {...input}
           />
           <button

@@ -14,6 +14,7 @@
     "db:seed:quran": "tsx scripts/import-quran.ts",
     "db:seed:tafsir": "tsx scripts/import-tafsir.ts",
     "db:seed:demo": "tsx scripts/seed-demo.ts",
+    "registry:sync": "tsx scripts/sync-sources.ts",
     "kb:index": "tsx scripts/index-knowledge.ts",
     "quran:cache": "tsx scripts/import-quran.ts --json-only"
   },

@@ -145,6 +145,6 @@ push not configured / denied.
 
 - No Quran text exists in the repository. `src/lib/quran/surahs.ts` holds metadata only; tests use ordinary Arabic sentences.
 - Verse text: Quran.com API v4 at runtime (cached) or imported into PostgreSQL by `npm run db:seed:quran`, which verifies counts per surah and stores checksums.
-- Story intros/summaries are short editorial framing, flagged `contentStatus: "demo"` and shown with a notice until a qualified reviewer approves them.
+- Story intros/summaries are short editorial framing, flagged `isDemo: true, reviewState: "draft"` and shown with the notice «محتوى تجريبي — لم تتم مراجعته واعتماده بعد» until a qualified reviewer approves them (see `docs/ARCHITECTURE-safety.md`).
 - Videos are curated by admins only (`youtubeId` null until added); embeds use youtube-nocookie with a click-to-load facade.
 - Demo progress (`content/demo-seed.ts`) is synthetic numbers only and labelled «نسخة تجريبية» in the UI.

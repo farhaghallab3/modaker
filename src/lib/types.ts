@@ -5,6 +5,8 @@
  */
 
 // ── Quran ────────────────────────────────────────────────────────────────
+import type { ReviewState } from "@/lib/content-state";
+
 export type Revelation = "meccan" | "medinan";
 
 export interface SurahMeta {
@@ -202,8 +204,10 @@ export interface Story {
   chapters: StoryChapter[];
   references: SourceRef[];
   videoIds: string[];
-  /** "verified" = reviewed by a qualified editor; "demo" = placeholder copy */
-  contentStatus: "verified" | "demo";
+  /** Placeholder copy nobody has reviewed. Independent of `reviewState`. */
+  isDemo: boolean;
+  /** Editorial approval; demo content stays `draft`. */
+  reviewState: ReviewState;
   accent: "olive" | "sand" | "terracotta" | "forest";
 }
 
@@ -217,11 +221,40 @@ export interface Video {
   storySlug?: string;
   range?: AyahRange;
   durationLabel?: string;
-  contentStatus: "verified" | "demo";
+  isDemo: boolean;
+  reviewState: ReviewState;
 }
 
 // ── Assistant ────────────────────────────────────────────────────────────
 export type AnswerKind = "grounded" | "insufficient" | "needs-scholar" | "quran-text" | "unavailable";
+
+/** A, B, C, D — see docs/ARCHITECTURE-safety.md. Higher is more sensitive; never lowered after routing. */
+export type SafetyLevel = "A" | "B" | "C" | "D";
+
+/** What the answer IS, independent of the legacy `kind`. */
+export type AnswerType =
+  | "quran_text"
+  | "quiz"
+  | "sourced_explanation"
+  | "sensitive_sourced"
+  | "referral"
+  | "abstention"
+  | "clarification"
+  | "quote_correction"
+  | "scope_redirect"
+  | "unavailable";
+
+export type AbstainReason =
+  | "no_evidence"
+  | "no_hadith_source"
+  /** A general fiqh question was recognised but no approved fiqh source is loaded (knowledge gap). */
+  | "no_fiqh_source"
+  | "language_unsupported"
+  | "unverified_generation"
+  | "needs_clarification"
+  | "out_of_scope"
+  | "policy"
+  | "source_unavailable";
 
 export interface Citation {
   sourceId: string;
@@ -229,7 +262,22 @@ export interface Citation {
   ref: string; // "مريم: 32" or "التفسير الميسر — مريم 32"
   excerpt: string;
   url?: string;
+  /** What kind of material the citation points at. */
+  sourceKind?: "quran" | "tafsir" | "hadith" | "translation" | "curated" | "other";
 }
+
+/**
+ * Typed answer blocks. The UI can always tell scripture from a source quotation from a generated
+ * explanation — and `explanation` blocks say which of those they are.
+ */
+export type AnswerBlock =
+  | { type: "quran"; verses: Ayah[]; source: SourceRef; caption?: string }
+  | { type: "hadith"; text: string; narrator?: string; grade: string; gradedBy?: string; reference: string; sourceId: string }
+  | { type: "source_quote"; text: string; sourceId: string; ref: string; author?: string; citation: number }
+  | { type: "explanation"; text: string; origin: "template" | "extractive" | "generated"; citations: number[] }
+  | { type: "warning"; text: string; code: "sensitive" | "quote_mismatch" | "injection" | "hostile" | "language" | "policy"; templateId?: string; templateVersion?: number }
+  | { type: "referral"; text: string; templateId: string; templateVersion?: number }
+  | { type: "citation"; n: number; sourceId: string; title: string; ref: string; url?: string; sourceKind?: Citation["sourceKind"] };
 
 export interface AssistantAnswer {
   kind: AnswerKind;
@@ -238,6 +286,19 @@ export interface AssistantAnswer {
   verses?: Ayah[];
   citations: Citation[];
   provider: string;
+
+  // ── safety envelope (always present on server answers) ──
+  safetyLevel?: SafetyLevel;
+  answerType?: AnswerType;
+  blocks?: AnswerBlock[];
+  /** Was generation permitted for this question, and was it actually used? */
+  generation?: { allowed: boolean; used: boolean };
+  abstained?: boolean;
+  abstainReason?: AbstainReason;
+  /** The answer sends the user to a qualified authority instead of ruling. */
+  referral?: boolean;
+  /** Shown near the assistant: it is an AI tool, not a scholar. */
+  disclosure?: string;
 }
 
 export interface ChatMessage {

@@ -11,6 +11,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Button, ButtonLink, EmptyState } from "@/components/ui/primitives";
 import { SourceList } from "@/components/ui/SourceCitation";
 import { getStory } from "@/content/stories";
+import { DEMO_CONTENT_LABEL, needsDemoNotice } from "@/lib/content-state";
 import { videosForStory } from "@/content/videos";
 import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import { ChapterVerses } from "./ChapterVerses";
@@ -82,12 +83,12 @@ export function StoryDetailScreen() {
         </div>
       </header>
 
-      {story.contentStatus === "demo" ? (
+      {needsDemoNotice(story) ? (
         <p role="note" className="mb-10 flex items-start gap-2.5 rounded-2xl bg-sand-100/70 px-4 py-3 text-sm leading-6 text-sand-800">
           <Icon name="info" size={18} className="mt-0.5 shrink-0" />
           <span>
-            محتوى تحريري تجريبي — يحتاج مراجعة علمية قبل النشر. المقدمة وملخصات الفصول ليست تفسيرًا؛ نص الآيات من المصحف الموثّق
-            والتفسير من التفسير الميسر.
+            <strong className="font-semibold">{DEMO_CONTENT_LABEL}.</strong> المقدمة وملخصات الفصول ليست تفسيرًا؛ نص الآيات من
+            المصحف الموثّق والتفسير من التفسير الميسر.
           </span>
         </p>
       ) : null}

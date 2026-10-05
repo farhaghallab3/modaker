@@ -1,5 +1,7 @@
 /**
- * Retrieval over APPROVED sources only.
+ * Retrieval over APPROVED sources only. A passage is retrievable when its source is enabled and
+ * approved/published AND (for stored chunks) the chunk itself is `published` and not demo —
+ * demo or unreviewed content can never reach an answer.
  *
  *  TafsirRetriever   — deterministic: tafsir entries for referenced ayahs via the
  *                      QuranProvider; for a surah-only reference, ranks that surah's
@@ -15,7 +17,7 @@ import { QuranSourceUnavailableError } from "../errors";
 import type { EmbeddingProvider } from "../llm/provider";
 import type { QuranProvider } from "../quran/common";
 import type { ParsedReferences } from "./references";
-import { approvedSourceIds, getSource, isApproved, TAFSIR_SOURCE_IDS, type TafsirSlug } from "./sources";
+import { approvedSourceIds, getSource, isApproved, TAFSIR_SOURCE_IDS, type KnowledgeKind, type TafsirSlug } from "./sources";
 
 export interface Passage {
   sourceId: string;
@@ -26,6 +28,10 @@ export interface Passage {
   /** 0..1, higher is more relevant. Direct ayah hits score 1. */
   score: number;
   ayahKey?: string;
+  /** Provenance, carried through to the answer's citations and typed blocks. */
+  kind?: KnowledgeKind;
+  author?: string;
+  locator?: string;
 }
 
 export interface RetrieveOptions {
@@ -111,7 +117,7 @@ export class TafsirRetriever implements Retriever {
 
   private toPassage(e: TafsirEntry, sourceId: string, score: number): Passage {
     const [s, a] = e.key.split(":").map(Number);
-    return { sourceId, ref: ayahRefLabel(s, a), text: e.text, url: quranComUrl(s, a), score, ayahKey: e.key };
+    return { sourceId, ref: ayahRefLabel(s, a), text: e.text, url: quranComUrl(s, a), score, ayahKey: e.key, kind: "tafsir", author: getSource(sourceId)?.publisher };
   }
 
   /** Direct hits. Grouped tafsir (Ibn Kathir) is matched by the entry covering each ayah. */
@@ -164,6 +170,9 @@ interface ChunkRow {
   text: string;
   ayahKey: string | null;
   url: string | null;
+  kind: KnowledgeKind | null;
+  author: string | null;
+  locator: string | null;
   score: number;
 }
 
@@ -186,11 +195,14 @@ export class PgVectorRetriever implements Retriever {
 
     // All values are bound parameters ($1..$4) — no string interpolation of input.
     const rows = await prisma.$queryRawUnsafe<ChunkRow[]>(
-      `SELECT c."sourceId", c.ref, c.text, c."ayahKey", s.url,
+      `SELECT c."sourceId", c.ref, c.text, c."ayahKey", COALESCE(c.url, s.url) AS url, c.kind, c.author, c.locator,
               1 - (c.embedding <=> $1::vector) AS score
          FROM "KnowledgeChunk" c
          JOIN "KnowledgeSource" s ON s.id = c."sourceId"
-        WHERE s.approved = true
+        WHERE s.enabled = true
+          AND s."reviewState" IN ('approved', 'published')
+          AND c."reviewState" = 'published'
+          AND c."isDemo" = false
           AND c.embedding IS NOT NULL
           AND c."sourceId" = ANY($2::text[])
           AND (cardinality($3::int[]) = 0 OR c.surah = ANY($3::int[]))
@@ -212,6 +224,9 @@ export class PgVectorRetriever implements Retriever {
           url: s && a ? quranComUrl(s, a) : (r.url ?? getSource(r.sourceId)?.url),
           score: Number(r.score),
           ayahKey: r.ayahKey ?? undefined,
+          kind: r.kind ?? getSource(r.sourceId)?.kind,
+          author: r.author ?? getSource(r.sourceId)?.publisher,
+          locator: r.locator ?? undefined,
         };
       });
   }

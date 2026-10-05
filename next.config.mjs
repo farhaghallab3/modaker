@@ -1,3 +1,6 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 /** @type {import('next').NextConfig} */
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -9,6 +12,8 @@ const securityHeaders = [
 
 const nextConfig = {
   reactStrictMode: true,
+  // Pin the workspace root; a stray lockfile in the home directory otherwise confuses Next's inference.
+  outputFileTracingRoot: path.dirname(fileURLToPath(import.meta.url)),
   images: {
     remotePatterns: [{ protocol: "https", hostname: "i.ytimg.com" }],
   },

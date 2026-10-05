@@ -8,8 +8,9 @@
  * • `intro` and chapter `summary` are short, neutral narrative framing written
  *   by the editorial team — they are NOT tafsir. Explanations shown to users
  *   always come from an approved tafsir (التفسير الميسر) via `api.tafsir(n)`.
- * • Every story ships as `contentStatus: "demo"` until a qualified reviewer
- *   approves the copy; the UI shows a visible notice for demo content.
+ * • Every story ships as `isDemo: true, reviewState: "draft"` until a qualified reviewer
+ *   approves the copy; the UI shows a visible notice for demo content, and the assistant
+ *   never treats it as knowledge (see src/lib/content-state.ts).
  * • Ranges must be contiguous, ascending and within the surah's ayah count —
  *   `validateStories()` below checks this and is cheap enough to run in tests.
  */
@@ -51,7 +52,8 @@ export const STORIES: Story[] = [
       "قصة متصلة تُروى في سورة يوسف من أولها إلى آخرها تقريبًا: رؤيا يراها يوسف في صغره، ثم ابتلاءات متتابعة بين البئر والبيت والسجن، حتى يجتمع شمل الأسرة من جديد. نتتبعها هنا فصلًا فصلًا مع الآيات من المصحف الموثّق.",
     surahs: [12],
     accent: "olive",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
     references: REFS,
     videoIds: ["v-yusuf-journey", "v-yusuf-brothers"],
     chapters: [
@@ -72,7 +74,8 @@ export const STORIES: Story[] = [
       "فتية مؤمنون يعتزلون قومهم ويلجؤون إلى كهف، فيلبثون فيه زمنًا طويلًا ثم يستيقظون. تُروى قصتهم في مطلع سورة الكهف.",
     surahs: [18],
     accent: "forest",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
     references: REFS,
     videoIds: ["v-kahf-cave"],
     chapters: [
@@ -89,7 +92,8 @@ export const STORIES: Story[] = [
     intro: "يرحل موسى عليه السلام مع فتاه ليلقى رجلًا صالحًا أعطاه الله علمًا، فيصحبه في رحلة من ثلاثة مواقف.",
     surahs: [18],
     accent: "sand",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
     references: REFS,
     videoIds: ["v-musa-khidr"],
     chapters: [
@@ -106,7 +110,8 @@ export const STORIES: Story[] = [
     intro: "ملك أعطاه الله قوة وسلطانًا، تُروى رحلاته إلى أقصى المغرب وأقصى المشرق ثم بناؤه السدّ، في أواخر سورة الكهف.",
     surahs: [18],
     accent: "olive",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
     references: REFS,
     videoIds: ["v-dhul-qarnayn"],
     chapters: [
@@ -122,7 +127,8 @@ export const STORIES: Story[] = [
     intro: "تعتزل مريم أهلها فتأتيها البشارة، ثم يولد عيسى عليه السلام ويتكلم وهو رضيع. تُروى في سورة مريم.",
     surahs: [19],
     accent: "terracotta",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
     references: REFS,
     videoIds: ["v-maryam-story"],
     chapters: [
@@ -139,7 +145,8 @@ export const STORIES: Story[] = [
     intro: "يدعو زكريا ربه في خفاء وقد تقدّمت به السنّ، فيُبشَّر بيحيى. بها تُفتتح سورة مريم.",
     surahs: [19],
     accent: "sand",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
     references: REFS,
     videoIds: ["v-zakariya"],
     chapters: [

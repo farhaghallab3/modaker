@@ -122,14 +122,26 @@ export function AnswerView({
   );
 
   switch (answer.kind) {
-    case "grounded":
+    case "grounded": {
+      const body = <RichText text={answer.text} citations={answer.citations} idPrefix={idPrefix} />;
       return (
         <div className="space-y-4">
-          <RichText text={answer.text} citations={answer.citations} idPrefix={idPrefix} />
+          {answer.safetyLevel === "C" ? (
+            // Level C: disputed / sensitive — framed so it is never mistaken for a single ruling.
+            <Frame icon="shield" tone="scholar" title="مسألة قد تتضمن خلافًا">
+              {body}
+            </Frame>
+          ) : (
+            <>
+              {answer.generation?.used ? <p className="text-xs text-muted">شرح مولَّد آليًا من المصادر المذكورة أدناه.</p> : null}
+              {body}
+            </>
+          )}
           {answer.verses?.length ? <VersePanel verses={answer.verses} /> : null}
           {sources}
         </div>
       );
+    }
 
     case "insufficient":
       return (

@@ -18,7 +18,7 @@
  *      range         related ayah range { surah, from, to } (optional)
  *      description   one or two neutral sentences about the video
  *      durationLabel e.g. "١٢ دقيقة" (optional)
- *      contentStatus "verified" once reviewed, otherwise "demo"
+ *      isDemo / reviewState: demo videos stay `isDemo: true, reviewState: "draft"` until reviewed
  * 4. If the video belongs to a story, add its `id` to that story's `videoIds`.
  *
  * Embeds always use youtube-nocookie.com behind a click-to-load facade, so no
@@ -41,7 +41,8 @@ export const VIDEOS: CuratedVideo[] = [
     storySlug: "yusuf",
     range: { surah: 12, from: 4, to: 101 },
     durationLabel: "٢٤ دقيقة",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
   },
   {
     id: "v-yusuf-brothers",
@@ -53,7 +54,8 @@ export const VIDEOS: CuratedVideo[] = [
     storySlug: "yusuf",
     range: { surah: 12, from: 58, to: 93 },
     durationLabel: "١٥ دقيقة",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
   },
   {
     id: "v-kahf-cave",
@@ -65,7 +67,8 @@ export const VIDEOS: CuratedVideo[] = [
     storySlug: "ashab-al-kahf",
     range: { surah: 18, from: 9, to: 26 },
     durationLabel: "١٢ دقيقة",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
   },
   {
     id: "v-musa-khidr",
@@ -77,7 +80,8 @@ export const VIDEOS: CuratedVideo[] = [
     storySlug: "musa-wal-khidr",
     range: { surah: 18, from: 60, to: 82 },
     durationLabel: "١٨ دقيقة",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
   },
   {
     id: "v-dhul-qarnayn",
@@ -89,7 +93,8 @@ export const VIDEOS: CuratedVideo[] = [
     storySlug: "dhul-qarnayn",
     range: { surah: 18, from: 83, to: 98 },
     durationLabel: "١٠ دقائق",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
   },
   {
     id: "v-maryam-story",
@@ -101,7 +106,8 @@ export const VIDEOS: CuratedVideo[] = [
     storySlug: "maryam",
     range: { surah: 19, from: 16, to: 36 },
     durationLabel: "١٤ دقيقة",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
   },
   {
     id: "v-zakariya",
@@ -113,7 +119,8 @@ export const VIDEOS: CuratedVideo[] = [
     storySlug: "zakariya-yahya",
     range: { surah: 19, from: 2, to: 15 },
     durationLabel: "٩ دقائق",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
   },
   {
     id: "v-mulk-memorize",
@@ -124,7 +131,8 @@ export const VIDEOS: CuratedVideo[] = [
     surah: 67,
     range: { surah: 67, from: 1, to: 30 },
     durationLabel: "٨ دقائق",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
   },
   {
     id: "v-mulk-tadabbur",
@@ -134,7 +142,8 @@ export const VIDEOS: CuratedVideo[] = [
     description: "مدخل هادئ إلى موضوعات سورة الملك قبل حفظها.",
     surah: 67,
     durationLabel: "١١ دقيقة",
-    contentStatus: "demo",
+    isDemo: true,
+    reviewState: "draft",
   },
 ];
 

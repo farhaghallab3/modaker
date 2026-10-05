@@ -4,6 +4,7 @@ Arabic-first (RTL) Quran memorization companion: **احفظ · سمّع · اف�
 Next.js 15 (App Router) · TypeScript · Tailwind CSS v4 · PostgreSQL + pgvector (Prisma).
 
 - Product, IA, frontend, design system, journeys → [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Religious safety, sourcing, content review workflow → [`docs/ARCHITECTURE-safety.md`](docs/ARCHITECTURE-safety.md) · privacy inventory → [`docs/PRIVACY-DATA-INVENTORY.md`](docs/PRIVACY-DATA-INVENTORY.md) · backlog (fiqh gap, contextual suggestions) → [`docs/BACKLOG.md`](docs/BACKLOG.md) · Quran-source migration plan → [`docs/QURAN-SOURCE-MIGRATION-PLAN.md`](docs/QURAN-SOURCE-MIGRATION-PLAN.md)
 - Database, REST API, AI/RAG, speech, notifications, security → [`docs/ARCHITECTURE-backend.md`](docs/ARCHITECTURE-backend.md)
 
 ## Run it
@@ -30,7 +31,8 @@ docker run -d --name muzakkir-db -e POSTGRES_PASSWORD=muzakkir -e POSTGRES_USER=
 npx prisma migrate dev --name init
 npm run db:seed:quran           # imports & verifies all 114 surahs (or --tanzil path/to/quran-uthmani.txt)
 npm run db:seed:tafsir
-npm run db:seed:demo            # curated stories/videos
+npm run db:seed:demo            # demo stories/videos (isDemo + draft; never indexed or treated as knowledge)
+npm run registry:sync           # source registry → database (planned sources stay disabled)
 npm run kb:index                # embeddings for the assistant (needs OPENAI_API_KEY)
 # then set QURAN_PROVIDER=database and NEXT_PUBLIC_DATA_MODE=api
 ```

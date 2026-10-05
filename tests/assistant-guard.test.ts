@@ -32,6 +32,8 @@ test("fatwa: personal rulings and jurisprudence", () => {
     "هل صلاتي صحيحة إذا أخطأت في الفاتحة؟",
     "هل هذا العمل حلال أم حرام؟",
     "طلقت زوجتي مرتين فماذا أفعل",
+    "هل الغيبة محرمة",
+    "هل هذا الفعل جائز",
   ]) {
     assert.equal(classifyQuestion(q), "fatwa", q);
   }
@@ -154,29 +156,44 @@ class FakeLlm implements LLMProvider {
   }
 }
 
-function make(opts: { llm?: FakeLlm | null; down?: boolean } = {}) {
+function make(opts: { llm?: FakeLlm | null; down?: boolean; generation?: boolean } = {}) {
   const quran = new FakeQuran(opts.down);
   const assistant = createAssistant({
     quran,
     retriever: new TafsirRetriever(quran, "muyassar"),
     llm: opts.llm ?? null,
+    // Generation is an explicit opt-in: an LLM being present is not enough.
+    generationEnabled: opts.generation ?? false,
     random: seededRandom(42),
   });
   return { quran, assistant };
 }
 
-test("fatwa → needs-scholar with the exact required text, never calls the LLM", async () => {
+test("personal fatwa (Level D) → needs-scholar with the exact required text, never calls the LLM", async () => {
   const llm = new FakeLlm("should not be used");
-  const { assistant } = make({ llm });
-  const a = await assistant.answer({ question: "هل يجوز تأخير الصلاة بسبب العمل؟" });
+  const { assistant } = make({ llm, generation: true });
+  const a = await assistant.answer({ question: "أنا مريضة ولا أستطيع الوضوء، هل يجوز لي ترك الصلاة؟" });
   assert.equal(a.kind, "needs-scholar");
+  assert.equal(a.safetyLevel, "D");
   assert.ok(a.text.startsWith(NEEDS_SCHOLAR_TEXT));
   assert.equal(llm.requests.length, 0);
 });
 
-test("fatwa about a referenced ayah offers related tafsir sources", async () => {
+test("a general ruling question (Level C) with no approved material abstains and never rules", async () => {
+  const llm = new FakeLlm("should not be used");
+  const { assistant } = make({ llm, generation: true });
+  const a = await assistant.answer({ question: "هل يجوز تأخير الصلاة بسبب العمل؟" });
+  assert.equal(a.safetyLevel, "C");
+  assert.equal(a.kind, "insufficient");
+  // a recognised fiqh question with no approved fiqh source states the limitation of OUR knowledge base
+  assert.equal(a.abstainReason, "no_fiqh_source");
+  assert.ok(a.text.includes("قاعدة المعرفة الحالية"));
+  assert.equal(llm.requests.length, 0);
+});
+
+test("personal fatwa about a referenced ayah offers related tafsir sources", async () => {
   const { assistant } = make();
-  const a = await assistant.answer({ question: "ما حكم من ترك العمل بالآية 3 من سورة الملك؟" });
+  const a = await assistant.answer({ question: "لدي ظرف طبي، فهل يسقط عني العمل بالآية 3 من سورة الملك؟" });
   assert.equal(a.kind, "needs-scholar");
   assert.ok(a.text.startsWith(NEEDS_SCHOLAR_TEXT));
   assert.ok(a.citations.length >= 1);
@@ -211,7 +228,7 @@ test("UI context supplies the ayah when the question says 'هذه الآية'", 
 
 test("LLM answer is sanitised and citations are renumbered to the cited passages", async () => {
   const llm = new FakeLlm("الآية تحث على الاجتهاد [2] وتذكر الصبر [1] ﴿نص مقتبس لا يجوز﴾");
-  const { assistant } = make({ llm });
+  const { assistant } = make({ llm, generation: true });
   const a = await assistant.answer({ question: "اشرح الآيات 1-3 من سورة الملك" });
   assert.equal(a.kind, "grounded");
   assert.equal(a.provider, "fake-llm");
@@ -226,7 +243,7 @@ test("LLM answer is sanitised and citations are renumbered to the cited passages
 });
 
 test("LLM sentinel → insufficient", async () => {
-  const { assistant } = make({ llm: new FakeLlm(INSUFFICIENT_SENTINEL) });
+  const { assistant } = make({ llm: new FakeLlm(INSUFFICIENT_SENTINEL), generation: true });
   const a = await assistant.answer({ question: "ما معنى الآية 4 من سورة الملك؟" });
   assert.equal(a.kind, "insufficient");
 });

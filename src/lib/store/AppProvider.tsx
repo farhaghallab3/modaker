@@ -17,7 +17,7 @@ import type {
   ResumePoint,
   UserProfile,
 } from "@/lib/types";
-import { createRepository } from "./repository";
+import { createRepository, isApiMode } from "./repository";
 import { EMPTY_STATE, todayKey, uid, type Goals, type PrivacySettings, type UserState } from "./state";
 
 export interface OnboardingInput {
@@ -131,6 +131,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ email, password }),
         }).catch(() => null);
         if (res && res.status === 401) throw new Error("البريد الإلكتروني أو كلمة المرور غير صحيحة");
+        if (res?.ok) {
+          // Real account: adopt the server's saved state. Never seed an empty state here —
+          // the autosave effect would overwrite the user's stored progress with it.
+          const user = (await res.json().catch(() => ({}))).user as { id?: string; email?: string } | undefined;
+          const loaded = await repo.current.load().catch(() => null);
+          if (!loaded && isApiMode()) throw new Error("تعذّر تحميل بياناتك. حاول مرة أخرى.");
+          setState(loaded ?? { ...EMPTY_STATE, session: { userId: user?.id ?? uid("local"), email } });
+          return;
+        }
         update((s) => {
           if (s.session && s.profile?.email === email) return s; // same device account
           return { ...EMPTY_STATE, session: { userId: uid("local"), email } };
@@ -138,7 +147,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       async signOut() {
         await fetch("/api/v1/auth/logout", { method: "POST" }).catch(() => null);
-        update((s) => ({ ...s, session: null }));
+        // With a server account, drop the in-memory copy so the next person on this device never sees it.
+        update((s) => (isApiMode() ? EMPTY_STATE : { ...s, session: null }));
       },
       startDemo() {
         setState(buildDemoState());

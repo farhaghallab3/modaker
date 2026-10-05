@@ -82,7 +82,7 @@ export function AssistantLauncher() {
                 <h2 id="assistant-sheet-title" className="font-display text-xl leading-none text-forest">
                   اسأل مُدّكِر
                 </h2>
-                <p className="text-[0.7rem] text-muted mt-1">إجابات موثّقة بمصادرها</p>
+                <p className="text-[0.7rem] text-muted mt-1">مساعد ذكي · إجابات موثّقة بمصادرها</p>
               </div>
             </div>
             <div className="flex items-center gap-1">

@@ -58,16 +58,28 @@ async function main() {
   const prisma = await getPrisma();
 
   for (const s of stories) {
+    // Reviewed content is owned by the review workflow, not by this script.
+    const existing = await prisma.story.findUnique({ where: { slug: s.slug }, select: { isDemo: true, reviewState: true } });
+    if (existing && !existing.isDemo && existing.reviewState !== "draft") {
+      log(`↷ story ${s.slug} is ${existing.reviewState}; leaving it untouched`);
+      continue;
+    }
     const data = {
       title: s.title,
       subtitle: s.subtitle ?? "",
       intro: s.intro ?? "",
       surahs: s.surahs ?? [],
       accent: s.accent ?? "olive",
-      contentStatus: s.contentStatus === "verified" ? ("verified" as const) : ("demo" as const),
+      isDemo: s.isDemo === true,
       references: JSON.parse(JSON.stringify(s.references ?? [])),
     };
-    const story = await prisma.story.upsert({ where: { slug: s.slug }, create: { slug: s.slug, ...data }, update: data });
+    // Seeding NEVER sets or changes `reviewState` on existing rows: new rows start as `draft`, and
+    // approval/publication only happens through the review workflow (src/server/content/workflow.ts).
+    const story = await prisma.story.upsert({
+      where: { slug: s.slug },
+      create: { slug: s.slug, ...data, reviewState: "draft", origin: "editorial" },
+      update: data,
+    });
     // Replace chapters + references wholesale (content is versioned in git).
     await prisma.$transaction([
       prisma.storyAyahReference.deleteMany({ where: { storyId: story.id } }),
@@ -75,7 +87,7 @@ async function main() {
     ]);
     for (const c of s.chapters ?? []) {
       const chapter = await prisma.storyChapter.create({
-        data: { storyId: story.id, order: c.order, title: c.title, summary: c.summary ?? "" },
+        data: { storyId: story.id, order: c.order, title: c.title, summary: c.summary ?? "", isDemo: s.isDemo === true, reviewState: "draft" },
       });
       if (c.ranges?.length) {
         await prisma.storyAyahReference.createMany({
@@ -98,13 +110,13 @@ async function main() {
       toAyah: v.range?.to ?? null,
       durationLabel: v.durationLabel ?? null,
       storyId: v.storySlug ? (storyIds.get(v.storySlug) ?? null) : null,
-      contentStatus: v.contentStatus === "verified" ? ("verified" as const) : ("demo" as const),
+      isDemo: v.isDemo === true,
     };
-    await prisma.video.upsert({ where: { id: v.id }, create: { id: v.id, ...data }, update: data });
+    await prisma.video.upsert({ where: { id: v.id }, create: { id: v.id, ...data, reviewState: "draft", origin: "editorial" }, update: data });
   }
   if (videos.length) log(`✓ ${videos.length} videos`);
   await prisma.$disconnect();
-  log("done. Curated story intros are indexed (as editorial, not tafsir) by npm run kb:index.");
+  log("done. Demo content is NOT indexed into the knowledge base; only published, non-demo content ever is (npm run kb:index).");
 }
 
 main().catch((e) => {

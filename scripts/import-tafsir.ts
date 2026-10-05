@@ -11,7 +11,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { QuranComProvider } from "@/server/quran/quran-com";
-import { KNOWLEDGE_SOURCES, TAFSIR_SOURCE_IDS, type TafsirSlug } from "@/server/rag/sources";
+import { isSourceUsable, KNOWLEDGE_SOURCES, TAFSIR_SOURCE_IDS, type TafsirSlug } from "@/server/rag/sources";
 import { log, mapLimit, parseArgs, surahList } from "./_util";
 
 const args = parseArgs();
@@ -24,8 +24,8 @@ const outRoot = path.resolve(args.values.get("out") ?? process.env.TAFSIR_JSON_D
 async function main() {
   for (const slug of slugs) {
     const src = KNOWLEDGE_SOURCES[TAFSIR_SOURCE_IDS[slug] ?? ""];
-    if (!src?.approved || src.kind !== "tafsir") {
-      console.error(`Unknown or unapproved tafsir source "${slug}". Allowed: muyassar, ibn-kathir.`);
+    if (!src || !isSourceUsable(src) || src.kind !== "tafsir") {
+      console.error(`Unknown, disabled or unapproved tafsir source "${slug}". A source must be enabled and approved/published in the registry first.`);
       process.exit(1);
     }
   }
@@ -38,7 +38,7 @@ async function main() {
     const src = KNOWLEDGE_SOURCES[TAFSIR_SOURCE_IDS[slug]];
     log(`importing ${src.title} (${src.id}) → ${jsonOnly ? outRoot : "database"}`);
     if (prisma) {
-      const row = { slug, title: src.title, publisher: src.publisher ?? "", url: src.url ?? null, language: src.language, quranComId: src.quranComTafsirId ?? null, approved: src.approved };
+      const row = { slug, title: src.title, publisher: src.publisher ?? "", url: src.url ?? null, language: src.language, quranComId: src.quranComTafsirId ?? null, approved: true };
       await prisma.tafsirSource.upsert({ where: { id: src.id }, create: { id: src.id, ...row }, update: row });
     } else {
       await mkdir(path.join(outRoot, slug), { recursive: true });

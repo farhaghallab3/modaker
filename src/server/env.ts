@@ -36,6 +36,12 @@ export const env = {
   llmProvider: () => str("LLM_PROVIDER", "extractive") as "anthropic" | "openai" | "extractive",
   anthropicApiKey: () => str("ANTHROPIC_API_KEY"),
   anthropicModel: () => str("ANTHROPIC_MODEL", "claude-sonnet-4-5"),
+  /**
+   * Generative religious answers are OFF unless explicitly enabled — having an API key is not
+   * enough. Even when on, generation is limited to Level B questions and every answer passes the
+   * verifier (src/server/safety/answer-verifier.ts).
+   */
+  assistantGeneration: () => str("ASSISTANT_GENERATION", "off").toLowerCase() === "on",
   embeddingProvider: () => str("EMBEDDING_PROVIDER", "openai") as "openai" | "none",
 
   /** 0 = never persist audio (default). */

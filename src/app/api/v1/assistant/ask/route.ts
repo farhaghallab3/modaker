@@ -2,13 +2,15 @@
  * POST /api/v1/assistant/ask  { question (≤ 1000 chars), context?: { surah?, ayah?, storySlug? } }
  *   → AssistantAnswer
  * Retrieval-grounded over approved sources; see src/server/rag/assistant.ts.
- * Signed-in users' Q&A is saved to ChatConversation (deleted with the account).
+ * Signed-in users' Q&A is saved to ChatConversation (deleted with the account), EXCEPT personal-case
+ * (Level D) questions, which are never persisted.
  */
 import type { AssistantAnswer } from "@/lib/types";
 import { optionalSession } from "@/server/auth";
 import { enforceRateLimit, json, readJson, route } from "@/server/http";
 import { answerQuestion } from "@/server/rag/assistant";
 import { toDbEnum } from "@/server/user/mappers";
+import { shouldPersistExchange } from "@/server/safety/privacy";
 import { askSchema } from "@/server/validation";
 
 export const runtime = "nodejs";
@@ -20,7 +22,8 @@ export const POST = route(async (req) => {
   const { question, context } = await readJson(req, askSchema, 16 * 1024);
 
   const answer = await answerQuestion({ question, context });
-  if (session) await saveExchange(session.userId, question, answer).catch((e) => console.warn("[assistant] save failed:", e.message));
+  // Personal-case (Level D) questions are never stored — see src/server/safety/privacy.ts.
+  if (session && shouldPersistExchange(answer)) await saveExchange(session.userId, question, answer).catch((e) => console.warn("[assistant] save failed:", e.message));
   return json(answer);
 });
 
@@ -43,6 +46,11 @@ async function saveExchange(userId: string, question: string, answer: AssistantA
         content: answer.text,
         answerKind: toDbEnum(answer.kind) as never,
         provider: answer.provider,
+        safetyLevel: answer.safetyLevel ?? null,
+        answerType: answer.answerType ?? null,
+        abstainReason: answer.abstainReason ?? null,
+        generationUsed: answer.generation?.used ?? false,
+        blocks: answer.blocks ? (JSON.parse(JSON.stringify(answer.blocks)) as never) : undefined,
         citations: { create: answer.citations.map((c) => ({ ...c, url: c.url ?? null })) },
       },
     }),

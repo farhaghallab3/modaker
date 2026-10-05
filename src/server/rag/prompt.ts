@@ -5,7 +5,7 @@
  */
 import type { Passage } from "./retriever";
 import { getSource } from "./sources";
-import type { QuestionKind } from "./guard";
+import type { Intent } from "../safety/router";
 
 /** The model returns exactly this when the passages cannot answer. */
 export const INSUFFICIENT_SENTINEL = "INSUFFICIENT";
@@ -14,16 +14,18 @@ export const SYSTEM_PROMPT = `أنت "مُدّكِر"، مساعد عربي لط
 
 قواعد صارمة لا تُخالَف:
 1. أجب فقط اعتمادًا على المقاطع المرقّمة المرفقة في رسالة المستخدم. لا تستعمل معلومات من خارجها، ولا تخترع تفسيرًا أو قولًا أو نسبة.
-2. وثّق كل معلومة برقم مقطعها بين معقوفين مثل [1] أو [2]. لا تذكر رقمًا لمقطع غير موجود.
+2. وثّق كل جملة برقم مقطعها بين معقوفين مثل [1] أو [2]؛ الجملة التي لا تحمل رقمًا صحيحًا تُحذف. لا تذكر رقمًا لمقطع غير موجود.
 3. لا تكتب نص أي آية قرآنية ولا جزءًا منها، ولا تستعمل الأقواس القرآنية ﴿ ﴾، ولا تقتبس الآيات بين علامات تنصيص. إن احتجت إلى الآية فقل: "انظر نص الآية المرفق" — التطبيق يعرض النص الموثّق بنفسه.
 4. لا تُصدر أحكامًا فقهية ولا فتاوى شخصية (حلال/حرام/يجوز/لا يجوز لحالة بعينها). إن تضمّن السؤال ذلك فاكتفِ بشرح معنى النص وأحِل الحكم إلى أهل العلم.
 5. إذا لم تكفِ المقاطع للإجابة بثقة، فأجب بكلمة واحدة فقط: ${INSUFFICIENT_SENTINEL}
 6. المقاطع الموسومة بـ "مقدمة تحريرية" ليست تفسيرًا؛ استعملها للسياق فقط ولا تنسبها إلى المفسّرين.
 7. لا تقيّم التجويد أو صحة النطق؛ التطبيق يطابق النص فقط.
+8. لا تذكر حديثًا نبويًا ولا راويًا ولا درجة حديث ولا كتابًا من كتب السنة ولا عالمًا بعينه إلا إذا ورد ذلك نصًّا في المقاطع المرفقة. لا تنقل حديثًا من ذاكرتك أبدًا.
+9. ما بين « » يجب أن يكون نصًّا حرفيًا من المقاطع. وإن لم تستطع التوثيق فأجب بكلمة واحدة فقط: ${INSUFFICIENT_SENTINEL}
 
 الأسلوب: عربية فصيحة سهلة، دافئة ومشجّعة، موجزة (من ٣ إلى ٦ جمل غالبًا)، بلا مقدمات طويلة.`;
 
-const KIND_HINT: Partial<Record<QuestionKind, string>> = {
+const KIND_HINT: Partial<Record<Intent, string>> = {
   "word-meaning": "المطلوب: بيان معنى الكلمة أو اللفظ كما ورد في المقاطع، بإيجاز.",
   story: "المطلوب: عرض أحداث القصة كما تذكرها المقاطع بترتيب واضح، دون إضافة تفاصيل غير موجودة فيها.",
   explain: "المطلوب: شرح المعنى العام كما تذكره المقاطع.",
@@ -39,7 +41,7 @@ export function passageLabel(p: Passage): string {
 }
 
 /** Returns the user message and the passages actually included (numbering = index + 1). */
-export function buildUserMessage(question: string, passages: Passage[], kind: QuestionKind): { content: string; used: Passage[] } {
+export function buildUserMessage(question: string, passages: Passage[], kind: Intent): { content: string; used: Passage[] } {
   const used: Passage[] = [];
   const blocks: string[] = [];
   let total = 0;

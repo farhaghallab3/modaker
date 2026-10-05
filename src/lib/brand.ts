@@ -5,9 +5,12 @@
 export const BRAND = {
   name: "مُدّكِر",
   nameLatin: "Muddakir",
-  title: "مُدّكِر — شيخك الذكي لحفظ القرآن الكريم وفهمه",
+  title: "مُدّكِر — رفيقك الذكي لحفظ القرآن الكريم وفهمه",
   description: "احفظ، سمّع، افهم، وراجع القرآن بخطة تتذكر تقدمك وترافقك خطوة بخطوة.",
 } as const;
+
+/** Shown wherever the assistant appears (PDF: transparency about AI). Short and calm, not a warning. */
+export const AI_DISCLOSURE = "مساعد ذكي يعتمد على مصادر إسلامية موثقة، وليس بديلاً عن العالم أو المفتي.";
 
 /** Provided logo assets (public/brand). Marks are the symbol only; the name is set in Amiri beside them. */
 export const BRAND_ASSETS = {

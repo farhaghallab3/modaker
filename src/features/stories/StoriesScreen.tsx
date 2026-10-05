@@ -5,6 +5,7 @@ import { Page, PageHeader } from "@/components/layout/PageHeader";
 import { StoryCard } from "@/components/stories/StoryCard";
 import { EmptyState } from "@/components/ui/primitives";
 import { STORIES } from "@/content/stories";
+import { DEMO_CONTENT_LABEL } from "@/lib/content-state";
 import { getSurahMeta } from "@/lib/quran/surahs";
 import { FilterChips } from "@/features/shared/FilterChips";
 
@@ -58,8 +59,7 @@ export function StoriesScreen() {
       ) : null}
 
       <p className="mt-12 border-t hairline pt-5 text-xs leading-6 text-muted max-w-2xl">
-        المقدمات وملخصات الفصول محتوى تحريري تجريبي يحتاج مراجعة علمية قبل النشر، وليست تفسيرًا. نص الآيات من المصحف الموثّق، والتفسير من
-        التفسير الميسر.
+        {DEMO_CONTENT_LABEL}. المقدمات وملخصات الفصول ليست تفسيرًا. نص الآيات من المصحف الموثّق، والتفسير من التفسير الميسر.
       </p>
     </Page>
   );

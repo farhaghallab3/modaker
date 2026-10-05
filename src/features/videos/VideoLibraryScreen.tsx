@@ -10,6 +10,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Badge, Button, EmptyState } from "@/components/ui/primitives";
 import { getStory, STORIES } from "@/content/stories";
 import { VIDEOS } from "@/content/videos";
+import { needsDemoNotice } from "@/lib/content-state";
 import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import { FilterChips } from "@/features/shared/FilterChips";
 
@@ -68,7 +69,7 @@ export function VideoLibraryScreen() {
           <div className="lg:pt-2">
             <div className="flex flex-wrap gap-2">
               {selectedSurah ? <Badge>سورة {selectedSurah.nameAr}</Badge> : null}
-              {selected.contentStatus === "demo" ? <Badge tone="muted">تجريبي</Badge> : null}
+              {needsDemoNotice(selected) ? <Badge tone="muted">تجريبي</Badge> : null}
             </div>
             <h2 className="mt-3 font-display text-2xl sm:text-3xl leading-snug text-forest">{selected.title}</h2>
             <p className="mt-1 text-sm text-muted">
