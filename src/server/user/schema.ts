@@ -46,6 +46,10 @@ export const ayahProgressSchema = z.object({
   successCount: z.number().int().min(0),
   mistakeCount: z.number().int().min(0),
   accuracy: z.number().min(0).max(1).optional(),
+  recent: z
+    .array(z.object({ at: isoDate, accuracy: z.number().min(0).max(1), mistakes: z.number().int().min(0), recId: z.string().max(64).optional() }))
+    .max(10)
+    .optional(),
 });
 
 export const profileSchema = z

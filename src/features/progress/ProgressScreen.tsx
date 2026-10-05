@@ -7,6 +7,8 @@ import { Icon } from "@/components/ui/Icon";
 import { Badge, ButtonLink, cn, EmptyState, ProgressBar, ProgressRing, SectionHeader, Stat } from "@/components/ui/primitives";
 import { ayahCount, dayCount, formatDate, n, percent } from "@/features/shared/format";
 import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
+import { needsReviewLabel } from "@/lib/review/labels";
+import { latestAccuracy } from "@/lib/review/learning";
 import { useApp } from "@/lib/store/AppProvider";
 import {
   averageAccuracy,
@@ -195,7 +197,7 @@ export function ProgressScreen() {
                     <span className="flex-1 text-sm text-ink">
                       سورة {getSurahMeta(p.surah)?.nameAr} · الآية {toArabicDigits(p.ayah)}
                     </span>
-                    {p.accuracy != null ? <span className="text-xs text-muted num">دقة {percent(p.accuracy)}</span> : null}
+                    {latestAccuracy(p) != null ? <span className="text-xs text-muted num">آخر دقة {percent(latestAccuracy(p)!)}</span> : null}
                     <Icon name="forward" size={16} className="text-muted" />
                   </Link>
                 </li>
@@ -240,14 +242,15 @@ export function ProgressScreen() {
                   <span className="flex items-baseline justify-between gap-3">
                     <span className="font-display text-xl text-forest group-hover:text-olive">سورة {s.meta.nameAr}</span>
                     <span className="text-xs text-muted num">
-                      {n(s.memorized)} / {n(s.total)}
+                      {n(s.memorized)} / {n(s.total)} محفوظة
                       {s.ratio >= 1 ? " · أتممتها" : ""}
+                      {s.weak ? ` · ${needsReviewLabel(s.weak)}` : ""}
                     </span>
                   </span>
                   <ProgressBar
                     value={s.ratio}
                     tone={s.ratio >= 1 ? "forest" : "olive"}
-                    label={`سورة ${s.meta.nameAr}: ${percent(s.ratio)}`}
+                    label={`سورة ${s.meta.nameAr}: ${percent(s.ratio)} من الحفظ`}
                     className="mt-2.5"
                   />
                 </Link>

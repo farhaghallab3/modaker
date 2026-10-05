@@ -2,6 +2,7 @@
  * Range helpers for the recitation flow. Pure.
  */
 import { tokenize } from "@/lib/quran/normalize";
+import { isMemorized } from "@/lib/review/learning";
 import type { AyahProgress, AyahRange } from "@/lib/types";
 
 /** Max ayahs per recitation — mirrors MAX_RECITATION_AYAHS on the server. */
@@ -10,7 +11,7 @@ export const MAX_RECITE_AYAHS = 30;
 /** Group memorized ayahs into contiguous runs per surah, split into chunks of ≤ `chunk`. */
 export function memorizedRanges(progress: AyahProgress[], chunk = 10): AyahRange[] {
   const ps = progress
-    .filter((p) => p.status !== "new" && p.status !== "learning")
+    .filter(isMemorized)
     .sort((a, b) => a.surah - b.surah || a.ayah - b.ayah);
   const out: AyahRange[] = [];
   for (const p of ps) {

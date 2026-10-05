@@ -9,6 +9,7 @@
  */
 import type { Transcript } from "@/lib/types";
 import { env } from "../env";
+import { ConsensusSttProvider } from "./consensus";
 import { MockSttProvider } from "./mock";
 import { OpenAiSttProvider } from "./openai";
 
@@ -36,9 +37,13 @@ export function getSttProvider(): SpeechToTextProvider {
     case "mock":
       cached = new MockSttProvider(process.env.MOCK_STT_TEXT ?? "");
       break;
-    case "openai":
-      cached = new OpenAiSttProvider();
+    case "openai": {
+      const primary = new OpenAiSttProvider();
+      const second = env.sttSecondOpinion();
+      // A second recognizer, when configured, gives independent evidence about each disputed word.
+      cached = second && second !== "off" && second !== env.openaiSttModel() ? new ConsensusSttProvider(primary, new OpenAiSttProvider(env.openaiApiKey(), second)) : primary;
       break;
+    }
     default:
       throw new Error(`Unknown STT_PROVIDER "${id}" (expected openai | mock)`);
   }

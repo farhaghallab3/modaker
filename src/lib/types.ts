@@ -96,8 +96,13 @@ export interface AyahProgress {
   streak: number;
   successCount: number;
   mistakeCount: number;
-  /** Rolling recitation accuracy 0..1. */
+  /** Rolling recitation accuracy 0..1 (blended over time — see `recent` for the actual outcomes). */
   accuracy?: number;
+  /**
+   * The last few recitation outcomes for this ayah, oldest first. This is the evidence behind
+   * "weak" / "mastered": each entry names the saved recitation (`recId`) that produced it.
+   */
+  recent?: { at: string; accuracy: number; mistakes: number; recId?: string }[];
 }
 
 /** Exactly where the user stopped — powers "continue from the exact ayah". */
@@ -122,13 +127,31 @@ export interface Bookmark {
 }
 
 // ── Recitation ───────────────────────────────────────────────────────────
-export type MistakeType = "omitted" | "added" | "incorrect" | "order" | "hesitation";
+export type MistakeType = "omitted" | "added" | "incorrect" | "order" | "hesitation" | "uncertain";
 
 export interface RecognizedWord {
   text: string;
   /** seconds from recording start, when the STT provider supplies timings */
   start?: number;
   end?: number;
+  /**
+   * 0..1 — the probability the recognizer itself assigned to this word (from token log-probabilities).
+   * Present ONLY when the provider really returns them; never estimated or invented.
+   */
+  confidence?: number;
+}
+
+/** What confidence information the recognizer actually supplied for this transcript. */
+export interface TranscriptEvidence {
+  /** "word-logprobs": per-word probabilities · "segment-logprobs": only per-segment decoding statistics · "none". */
+  kind: "word-logprobs" | "segment-logprobs" | "none";
+  /** Time ranges the recognizer's own decoding statistics mark as unreliable (Whisper's documented thresholds). */
+  lowConfidenceSegments?: { start: number; end: number; avgLogprob: number; noSpeechProb: number; compressionRatio: number }[];
+  /**
+   * The same audio transcribed by a second, independent recognizer. Words the two hear differently
+   * are treated as uncertain; the PRIMARY transcript is never replaced by it.
+   */
+  secondOpinion?: { provider: string; text: string; words?: RecognizedWord[] };
 }
 
 export interface Transcript {
@@ -137,6 +160,7 @@ export interface Transcript {
   provider: string;
   language: string;
   durationSec?: number;
+  evidence?: TranscriptEvidence;
 }
 
 export interface RecitationMistake {
@@ -148,15 +172,23 @@ export interface RecitationMistake {
   heard?: string;
   /** seconds of silence for hesitation */
   pauseSec?: number;
+  /** For "uncertain": why we could not tell a recitation error from a recognition error. */
+  reason?: "recognizers-disagree" | "low-confidence" | "confusable";
+  /** For "uncertain": the recognizer's own probability for the heard word, when it provided one. */
+  confidence?: number;
 }
 
 export interface AyahRecitationResult {
   key: string;
   ayah: number;
   accuracy: number; // 0..1
-  status: "mastered" | "needs-review" | "missed";
-  /** per expected word: matched / mismatched / omitted */
-  words: { text: string; state: "ok" | "incorrect" | "omitted"; heard?: string }[];
+  /**
+   * "uncertain": the only differences are words we cannot attribute to the learner rather than to the
+   * speech recognizer — the learner is asked to repeat; nothing is scored against them.
+   */
+  status: "mastered" | "needs-review" | "missed" | "uncertain";
+  /** per expected word: matched / mismatched / omitted / uncertain (recognizer doubt) */
+  words: { text: string; state: "ok" | "incorrect" | "omitted" | "uncertain"; heard?: string; reason?: "recognizers-disagree" | "low-confidence" | "confusable"; confidence?: number }[];
   mistakes: RecitationMistake[];
 }
 
@@ -166,6 +198,8 @@ export interface RecitationAnalysis {
   ayahs: AyahRecitationResult[];
   mistakes: RecitationMistake[];
   extraWords: string[];
+  /** Words we could not attribute to the learner rather than to the recognizer — excluded from the score. */
+  uncertainWords: number;
   transcript: Transcript;
   /** Always true: text matching only, never acoustic tajweed assessment. */
   textOnly: true;

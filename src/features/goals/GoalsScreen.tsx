@@ -7,7 +7,7 @@ import { Button, ButtonLink, cn, inputClass, ProgressRing } from "@/components/u
 import { ayahCount, dayCount, formatDate, n } from "@/features/shared/format";
 import { getSurahMeta, SURAHS, toArabicDigits } from "@/lib/quran/surahs";
 import { useApp } from "@/lib/store/AppProvider";
-import { lastNDays, surahProgress, today } from "@/lib/store/selectors";
+import { lastNDays, nextToMemorize, surahProgress, today } from "@/lib/store/selectors";
 import { todayKey } from "@/lib/store/state";
 import { Stepper } from "./Stepper";
 
@@ -94,8 +94,8 @@ export function GoalsScreen() {
                 : `هدفك اليوم ${ayahCount(daily)}.`}
           </p>
         </div>
-        {!dailyDone && state.resume ? (
-          <ButtonLink href={`/memorize/${state.resume.surah}?from=${state.resume.ayah}`} size="sm" className="ms-auto hidden sm:inline-flex" iconEnd="forward">
+        {!dailyDone && nextToMemorize(state) ? (
+          <ButtonLink href={`/memorize/${nextToMemorize(state)!.surah}?from=${nextToMemorize(state)!.ayah}`} size="sm" className="ms-auto hidden sm:inline-flex" iconEnd="forward">
             تابع الحفظ
           </ButtonLink>
         ) : null}

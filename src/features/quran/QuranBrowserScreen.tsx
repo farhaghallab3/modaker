@@ -10,7 +10,8 @@ import { normalizeArabic } from "@/lib/quran/normalize";
 import { getSurahMeta, SURAHS, toArabicDigits } from "@/lib/quran/surahs";
 import { ayahCountLabel } from "@/lib/review/labels";
 import { useApp } from "@/lib/store/AppProvider";
-import { surahProgress } from "@/lib/store/selectors";
+import { isMemorized } from "@/lib/review/learning";
+import { continuation, nextToMemorize, surahProgress } from "@/lib/store/selectors";
 import type { SurahMeta } from "@/lib/types";
 
 type Filter = "all" | "meccan" | "medinan" | "progress";
@@ -51,15 +52,16 @@ export function QuranBrowserScreen() {
     // first not-yet-memorized ayah per surah, for "متابعة"
     const done = new Set(
       Object.values(state.progress)
-        .filter((p) => p.status !== "new" && p.status !== "learning")
+        .filter(isMemorized)
         .map((p) => p.key),
     );
+    const cont = continuation(state);
     return SURAHS.map((meta) => {
       const { memorized, ratio } = surahProgress(state, meta.number);
       let next = 1;
-      if (state.resume?.surah === meta.number) next = state.resume.ayah;
+      if (cont.kind === "continue" && cont.surah === meta.number) next = cont.ayah;
       else while (next <= meta.ayahCount && done.has(`${meta.number}:${next}`)) next++;
-      const inProgress = (memorized > 0 && ratio < 1) || state.resume?.surah === meta.number;
+      const inProgress = (memorized > 0 && ratio < 1) || (cont.kind === "continue" && cont.surah === meta.number);
       return { meta, memorized, inProgress, next: Math.min(next, meta.ayahCount) };
     });
   }, [state]);
@@ -70,7 +72,9 @@ export function QuranBrowserScreen() {
         (filter === "progress" ? r.inProgress : r.meta.revelation === filter)) &&
       matchesSurah(r.meta, q),
   );
-  const resume = state.resume;
+  // The "continue" card points at the next meaningful continuation: where memorization actually stands.
+  const next = nextToMemorize(state);
+  const resume = next ? { surah: next.surah, ayah: next.ayah, mode: "memorize" as const } : null;
   const resumeMeta = resume ? getSurahMeta(resume.surah) : undefined;
   const inProgressCount = rows.filter((r) => r.inProgress).length;
 

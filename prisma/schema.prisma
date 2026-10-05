@@ -69,12 +69,16 @@ enum MistakeType {
   incorrect
   order
   hesitation
+  /// A difference we cannot attribute to the learner rather than to the speech recognizer.
+  uncertain
 }
 
 enum RecitationAyahStatus {
   mastered
   needs_review
   missed
+  /// Only recognizer-doubtful words differ: the learner is asked to repeat, nothing is scored against them.
+  uncertain
 }
 
 enum ReviewBucket {

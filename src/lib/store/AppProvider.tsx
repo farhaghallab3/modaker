@@ -7,7 +7,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { buildDemoState } from "@/content/demo-seed";
 import { getSurahMeta } from "@/lib/quran/surahs";
-import { applyReview, newAyahProgress } from "@/lib/review/scheduler";
+import { declareMemorized } from "@/lib/review/learning";
 import type {
   AppNotification,
   AyahProgress,
@@ -18,6 +18,7 @@ import type {
   UserProfile,
 } from "@/lib/types";
 import { createRepository, isApiMode } from "./repository";
+import { applyMarkMemorized, applyRecitation } from "./reducers";
 import { EMPTY_STATE, todayKey, uid, type Goals, type PrivacySettings, type UserState } from "./state";
 
 export interface OnboardingInput {
@@ -58,13 +59,6 @@ interface Ctx {
 }
 
 const AppContext = createContext<Ctx | null>(null);
-
-function bumpActivity(s: UserState, field: "memorized" | "reviewed" | "recitations", n: number): UserState["activity"] {
-  const k = todayKey();
-  const exists = s.activity.some((a) => a.date === k);
-  const base = exists ? s.activity : [...s.activity, { date: k, memorized: 0, reviewed: 0, recitations: 0 }];
-  return base.map((a) => (a.date === k ? { ...a, [field]: a[field] + n } : a));
-}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const repo = useRef(createRepository());
@@ -159,8 +153,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const progress: Record<string, AyahProgress> = { ...s.progress };
           // ayahs before the stopping point are treated as memorized and enter review
           for (let a = 1; a < input.stoppedAt; a++) {
-            const p = newAyahProgress(input.currentSurah, a, now);
-            progress[p.key] = progress[p.key] ?? p;
+            const key = `${input.currentSurah}:${a}`;
+            progress[key] = declareMemorized(progress[key], input.currentSurah, a, now);
           }
           const profile: UserProfile = {
             ...(s.profile ?? {
@@ -188,67 +182,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
       },
       markMemorized(range) {
-        update((s) => {
-          const now = new Date();
-          const progress = { ...s.progress };
-          let added = 0;
-          for (let a = range.from; a <= range.to; a++) {
-            const key = `${range.surah}:${a}`;
-            if (!progress[key] || progress[key].status === "new" || progress[key].status === "learning") {
-              progress[key] = newAyahProgress(range.surah, a, now);
-              added++;
-            }
-          }
-          const meta = getSurahMeta(range.surah);
-          const nextAyah = meta && range.to < meta.ayahCount ? range.to + 1 : range.to;
-          const resume =
-            !s.resume || s.resume.surah !== range.surah || s.resume.ayah <= range.to
-              ? { surah: range.surah, ayah: nextAyah, mode: "memorize" as const, updatedAt: now.toISOString() }
-              : s.resume;
-          const notifications = [...s.notifications];
-          if (meta && Object.values(progress).filter((p) => p.surah === range.surah).length >= meta.ayahCount) {
-            notifications.unshift({
-              id: uid("n"),
-              kind: "goal-complete",
-              title: `أتممت سورة ${meta.nameAr}`,
-              body: "ثبّتها الله في قلبك. ستنتقل إلى مراجعاتك المتباعدة.",
-              href: `/quran/${meta.number}`,
-              createdAt: now.toISOString(),
-              read: false,
-            });
-          }
-          return { ...s, progress, resume, notifications, activity: bumpActivity(s, "memorized", added) };
-        });
+        update((s) => applyMarkMemorized(s, range));
       },
       recordRecitation(analysis) {
-        update((s) => {
-          const now = new Date();
-          const progress = { ...s.progress };
-          for (const r of analysis.ayahs) {
-            const [surah, ayah] = r.key.split(":").map(Number);
-            const base = progress[r.key] ?? newAyahProgress(surah, ayah, now);
-            const mistakes = r.mistakes.filter((m) => m.type !== "hesitation").length;
-            progress[r.key] = applyReview(base, { accuracy: r.accuracy, mistakes }, now);
-          }
-          const { surah, from, to } = analysis.range;
-          const summary = {
-            id: uid("rec"),
-            at: now.toISOString(),
-            surah,
-            from,
-            to,
-            accuracy: analysis.accuracy,
-            mistakes: analysis.mistakes.length,
-            mastered: analysis.ayahs.filter((a) => a.status === "mastered").length,
-            needsReview: analysis.ayahs.filter((a) => a.status !== "mastered").length,
-          };
-          return {
-            ...s,
-            progress,
-            recitations: [summary, ...s.recitations].slice(0, 100),
-            activity: bumpActivity({ ...s, activity: bumpActivity(s, "recitations", 1) }, "reviewed", analysis.ayahs.length),
-          };
-        });
+        update((s) => applyRecitation(s, analysis));
       },
       setResume(point) {
         update((s) => ({ ...s, resume: { ...point, updatedAt: new Date().toISOString() } }));
@@ -264,8 +201,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addToReview(key) {
         update((s) => {
           const [surah, ayah] = key.split(":").map(Number);
-          const existing = s.progress[key] ?? newAyahProgress(surah, ayah);
-          // due now, flagged weak so it surfaces at the top of the queue
+          // An explicit request to review an ayah is a declaration that it is part of the learner's
+          // memorization (the only way an ayah becomes memorized without a declaration elsewhere or
+          // a good recitation). It is then due now and flagged weak so it tops the queue.
+          const existing = declareMemorized(s.progress[key], surah, ayah);
           return {
             ...s,
             progress: { ...s.progress, [key]: { ...existing, status: "weak", nextReviewAt: new Date().toISOString() } },

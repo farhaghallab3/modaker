@@ -16,6 +16,7 @@ import { useSurah } from "@/lib/api";
 import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import { MAX_RECITE_AYAHS } from "@/lib/recitation/ranges";
 import { ayahCountLabel, rangeLabel } from "@/lib/review/labels";
+import { isMemorized, startAyahFor } from "@/lib/review/learning";
 import { useApp } from "@/lib/store/AppProvider";
 import type { SurahMeta } from "@/lib/types";
 
@@ -46,11 +47,11 @@ function MemorizeSession({ meta }: { meta: SurahMeta }) {
   const [from, setFrom] = useState(() => {
     const q = Number(search.get("from"));
     if (q) return clamp(q);
-    return clamp(state.resume?.surah === n ? state.resume.ayah : 1);
+    return clamp(startAyahFor(state, n));
   });
   const [to, setTo] = useState(() => {
     const q = Number(search.get("to"));
-    const f = clamp(Number(search.get("from")) || (state.resume?.surah === n ? state.resume.ayah : 1));
+    const f = clamp(Number(search.get("from")) || startAyahFor(state, n));
     const t = q ? clamp(q) : clamp(f + daily - 1);
     return Math.min(Math.max(t, f), f + MAX_RECITE_AYAHS - 1);
   });
@@ -71,7 +72,7 @@ function MemorizeSession({ meta }: { meta: SurahMeta }) {
 
   // "continue from the exact ayah": opening new (not yet memorized) material
   // becomes the resume point; revising an older range never moves it back.
-  const startIsNew = !state.progress[`${n}:${from}`];
+  const startIsNew = !isMemorized(state.progress[`${n}:${from}`]);
   useEffect(() => {
     if (startIsNew) actions.setResume({ surah: n, ayah: from, mode: "memorize" });
   }, [actions, n, from, startIsNew]);
@@ -91,10 +92,7 @@ function MemorizeSession({ meta }: { meta: SurahMeta }) {
   // ── Completion ─────────────────────────────────────────────────────────
   const [done, setDone] = useState(false);
   const doneRef = useRef<HTMLHeadingElement>(null);
-  const alreadyMemorized = ayahs.length > 0 && ayahs.every((a) => {
-    const s = state.progress[a.key]?.status;
-    return s && s !== "new" && s !== "learning";
-  });
+  const alreadyMemorized = ayahs.length > 0 && ayahs.every((a) => isMemorized(state.progress[a.key]));
   const reciteHref = `/recite?surah=${n}&from=${from}&to=${to}`;
 
   function complete() {

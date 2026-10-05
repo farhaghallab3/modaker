@@ -11,6 +11,8 @@
 import type { Transcript } from "@/lib/types";
 import { createLevelMeter, hasGetUserMedia, openMicrophone, stopStream } from "./microphone";
 import { segmentsToWords, type TimedSegment } from "./timing";
+import { classifyEmptyTranscript } from "./empty-result";
+import { sttLog } from "./diagnostics";
 import { emitter, SpeechError, type RecognitionSession, type SpeechRecognizer } from "./types";
 
 // ── Minimal Web Speech typings (not in lib.dom for all TS versions) ─────
@@ -42,6 +44,11 @@ interface SR extends EventTarget {
   onerror: ((e: SRErrorEvent) => void) | null;
   onend: (() => void) | null;
   onstart: (() => void) | null;
+  onaudiostart: (() => void) | null;
+  onsoundstart: (() => void) | null;
+  onspeechstart: (() => void) | null;
+  onspeechend: (() => void) | null;
+  onnomatch: (() => void) | null;
   start(): void;
   stop(): void;
   abort(): void;
@@ -78,6 +85,9 @@ export const webSpeechRecognizer: SpeechRecognizer = {
     let lastStartAt = 0;
     let fatal: SpeechError | null = null;
     let endWaiter: (() => void) | null = null;
+    let peak = 0; // loudest mic level seen
+    let resultEvents = 0;
+    let lastEngineError: string | null = null;
 
     const finals: TimedSegment[] = [];
     // per-instance bookkeeping (result indices reset on every restart)
@@ -95,6 +105,7 @@ export const webSpeechRecognizer: SpeechRecognizer = {
       stream = null;
       if (rec) {
         rec.onresult = rec.onerror = rec.onend = rec.onstart = null;
+        rec.onaudiostart = rec.onsoundstart = rec.onspeechstart = rec.onspeechend = rec.onnomatch = null;
         try {
           rec.abort();
         } catch {
@@ -124,7 +135,16 @@ export const webSpeechRecognizer: SpeechRecognizer = {
       finalized = new Set();
       lastStartAt = performance.now();
 
+      r.onstart = () => sttLog("web-speech", "engine-start", { lang: r.lang });
+      r.onaudiostart = () => sttLog("web-speech", "audiostart");
+      r.onsoundstart = () => sttLog("web-speech", "soundstart");
+      r.onspeechstart = () => sttLog("web-speech", "speechstart");
+      r.onspeechend = () => sttLog("web-speech", "speechend");
+      r.onnomatch = () => sttLog("web-speech", "nomatch");
+
       r.onresult = (e) => {
+        resultEvents++;
+        sttLog("web-speech", "result", { results: e.results.length, resultIndex: e.resultIndex, final: Boolean(e.results[e.results.length - 1]?.isFinal) });
         let interim = "";
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const res = e.results[i];
@@ -145,6 +165,8 @@ export const webSpeechRecognizer: SpeechRecognizer = {
       };
 
       r.onerror = (e) => {
+        lastEngineError = e.error;
+        sttLog("web-speech", "engine-error", { error: e.error });
         switch (e.error) {
           case "not-allowed":
           case "service-not-allowed":
@@ -162,6 +184,7 @@ export const webSpeechRecognizer: SpeechRecognizer = {
       };
 
       r.onend = () => {
+        sttLog("web-speech", "engine-end", { active, restarts: rapidRestarts, finals: finals.length });
         // keep text that never got finalized before the engine stopped
         if (pendingInterim) {
           finals.push({ text: pendingInterim, start: now() - 1, end: now() });
@@ -190,7 +213,11 @@ export const webSpeechRecognizer: SpeechRecognizer = {
         if (!Ctor) throw new SpeechError("unsupported");
         // Ask for the mic explicitly: clear NotAllowed/NotFound errors + level meter.
         stream = await openMicrophone();
-        meter = createLevelMeter(stream, levels.emit);
+        meter = createLevelMeter(stream, (l) => {
+          peak = Math.max(peak, l);
+          levels.emit(l);
+        });
+        sttLog("web-speech", "mic-open", { tracks: stream.getAudioTracks().length });
         t0 = performance.now();
         active = true;
         try {
@@ -226,10 +253,18 @@ export const webSpeechRecognizer: SpeechRecognizer = {
         teardown();
         levels.clear();
         interims.clear();
+        const text = finals.map((f) => f.text).join(" ").trim();
+        sttLog("web-speech", "stopped", { durationSec: Math.round(duration * 10) / 10, textLength: text.length, resultEvents, lastEngineError, peakLevel: Math.round(peak * 100) / 100, fatal: fatal?.code ?? null });
         if (fatal) throw fatal;
+        // The engine produced nothing. If the microphone clearly heard sound, say THAT instead of
+        // «we didn't hear you» — the recognition service failed, not the user.
+        if (!text) {
+          const err = classifyEmptyTranscript(peak, `browser recognition returned no text (engine: ${lastEngineError ?? "no error"})`);
+          if (err) throw err;
+        }
         const words = segmentsToWords(finals);
         return {
-          text: finals.map((f) => f.text).join(" ").trim(),
+          text,
           words: words.length ? words : undefined,
           provider: "browser:web-speech",
           language,

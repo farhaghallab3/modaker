@@ -87,7 +87,9 @@ function startOfDay(d: Date) {
 }
 
 function bucketFor(p: AyahProgress, now: Date): ReviewBucket {
-  if (p.status === "weak" || (p.accuracy != null && p.accuracy < 0.75)) return "weak";
+  // Weak = the latest recitation outcome was below passing (status is set by applyReview). It is
+  // NOT also derived from the blended rolling accuracy: one good recitation must clear it.
+  if (p.status === "weak") return "weak";
   const due = p.nextReviewAt ? new Date(p.nextReviewAt) : now;
   if (due.getTime() <= startOfDay(now).getTime() + DAY) return "today";
   if (p.status === "mastered") return "mastered";

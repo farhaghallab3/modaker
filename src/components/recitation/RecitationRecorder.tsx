@@ -254,6 +254,16 @@ const ERRORS: Record<SpeechErrorCode, { icon: IconName; title: string; body: Rea
     title: "لم نسمع تلاوة واضحة",
     body: "اقترب من الميكروفون، واختر مكانًا هادئًا، وتلُ بصوت مسموع ثم أعد المحاولة.",
   },
+  "no-audio": {
+    icon: "micOff",
+    title: "لم يُسجَّل أي صوت",
+    body: "لم يلتقط المتصفح بيانات صوتية من الميكروفون، فلم نرسل شيئًا. تأكد من اختيار الميكروفون الصحيح في إعدادات المتصفح والنظام، ثم أعد المحاولة.",
+  },
+  "engine-no-result": {
+    icon: "alert",
+    title: "سمعنا صوتك لكن تعذّر تحويله إلى نص",
+    body: "وصل الصوت إلى الميكروفون، لكن خدمة التعرّف لم تُرجع نصًّا. هذا خلل في التعرّف لا في تلاوتك — جرّب الطريقة الأخرى للتعرّف أو أعد المحاولة.",
+  },
   unknown: {
     icon: "alert",
     title: "تعذّر إكمال التسجيل",
@@ -293,7 +303,7 @@ function RecorderError({
             أعد المحاولة
           </Button>
         ) : null}
-        {(code === "stt-unavailable" || code === "unsupported-format" || code === "network") && rec.canSwitch ? (
+        {(code === "stt-unavailable" || code === "unsupported-format" || code === "network" || code === "engine-no-result") && rec.canSwitch ? (
           <Button variant="ghost" onClick={rec.switchRecognizer}>
             {altLabel}
           </Button>
