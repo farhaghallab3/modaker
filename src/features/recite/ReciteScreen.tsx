@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AudioPlayer } from "@/components/quran/AudioPlayer";
 import { SourceLine } from "@/components/quran/QuranVerse";
 import { useAyahAudio } from "@/components/quran/useAyahAudio";
-import { RecitationFeedback, TextOnlyNote } from "@/components/recitation/RecitationFeedback";
+import { BetaNote, RecitationFeedback, TextOnlyNote } from "@/components/recitation/RecitationFeedback";
 import { RecitationRecorder } from "@/components/recitation/RecitationRecorder";
 import { useRecitationRecorder } from "@/components/recitation/useRecitationRecorder";
 import { Icon } from "@/components/ui/Icon";
@@ -113,6 +113,7 @@ function RangeSelector() {
             </section>
           </>
         )}
+        <BetaNote />
         <TextOnlyNote className="justify-center" />
       </div>
     </div>
@@ -218,11 +219,13 @@ function ReciteSession({
     setSaved(true);
   }
 
+  // What saving can actually do: only a well-heard, validated-recognizer result with at least one judged ayah schedules anything.
+  const changesLearning = !!analysis && analysis.learningEligible && analysis.recognition === "good" && analysis.ayahs.some((a) => a.status !== "uncertain");
   const nextReview = useMemo(() => {
-    if (!saved || !analysis) return null;
+    if (!saved || !analysis || !changesLearning) return null;
     const dates = analysis.ayahs.map((a) => state.progress[a.key]?.nextReviewAt).filter((d): d is string => !!d).sort();
     return dates[0] ?? null;
-  }, [saved, analysis, state.progress]);
+  }, [saved, analysis, changesLearning, state.progress]);
 
   const recording = rec.phase === "recording" || rec.phase === "starting" || rec.phase === "transcribing";
   const count = range.to - range.from + 1;
@@ -345,6 +348,7 @@ function ReciteSession({
                   <Icon name="shield" size={17} className="mt-1 text-olive" />
                   لا نحفظ تسجيلك؛ يُحوَّل إلى نص ثم يُحذف.
                 </p>
+                <BetaNote />
                 <TextOnlyNote />
               </section>
             ) : null}
@@ -394,7 +398,7 @@ function ReciteSession({
                     <div role="status" className="rounded-[var(--radius-card)] bg-olive-100/60 px-5 py-4 animate-rise">
                       <p className="flex items-center gap-2 font-semibold text-forest">
                         <Icon name="checkCircle" size={19} className="text-olive" />
-                        حُفظت النتيجة وجُدولت المراجعة
+                        {changesLearning ? "حُفظت النتيجة وجُدولت المراجعة" : "حُفظت المحاولة في سجلّك — دون تغيير مراجعاتك"}
                       </p>
                       <p className="mt-1 text-sm text-ink/75">
                         {nextReview ? (
@@ -402,7 +406,7 @@ function ReciteSession({
                             موعد مراجعتك القادمة لهذا المقطع: <strong className="text-forest">{relativeDueLabel(nextReview)}</strong>.
                           </>
                         ) : null}{" "}
-                        كلما أتقنت التسميع تباعدت المراجعات.
+                        {changesLearning ? "كلما أتقنت التسميع تباعدت المراجعات." : "لم يتغيّر تقدّمك لأن هذه المحاولة تجريبية أو لم نتأكد من كل الكلمات."}
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <ButtonLink href="/review" size="sm" variant="secondary" icon="review">
@@ -425,14 +429,22 @@ function ReciteSession({
       {stage === "feedback" && analysis ? (
         <FocusActionBar label="إجراءات النتيجة">
           <div className="grid grid-cols-2 sm:flex gap-2 sm:justify-center">
-            {!saved ? (
-              <Button className="col-span-2" icon="calendar" onClick={save}>
-                حفظ النتيجة وجدولة المراجعة
+            {analysis.recognition !== "good" ? (
+              <Button className="col-span-2" icon="mic" onClick={retry}>
+                أعد التسميع
               </Button>
-            ) : null}
-            <Button variant="ghost" icon="review" onClick={retry} className={saved ? "col-span-1" : ""}>
-              أعد المحاولة
-            </Button>
+            ) : (
+              <>
+                {!saved ? (
+                  <Button className="col-span-2" icon={changesLearning ? "calendar" : "check"} onClick={save}>
+                    {changesLearning ? "حفظ النتيجة وجدولة المراجعة" : "حفظ المحاولة في السجل"}
+                  </Button>
+                ) : null}
+                <Button variant="ghost" icon="review" onClick={retry} className={saved ? "col-span-1" : ""}>
+                  أعد المحاولة
+                </Button>
+              </>
+            )}
             <Button
               variant="quiet"
               icon="volume"

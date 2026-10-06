@@ -127,6 +127,15 @@ export interface Bookmark {
 }
 
 // ── Recitation ───────────────────────────────────────────────────────────
+/**
+ * Why a difference is "uncertain" (not attributed to the learner):
+ *  - recognizers-disagree / low-confidence: the recognizer's own evidence says it may have misheard
+ *  - confusable: the heard word is a plausible mis-recognition of the expected one (heuristic, last resort)
+ *  - unconfirmed: nothing independent corroborates the difference (one recognizer, no word confidence) — the
+ *    default for every difference, because a single general-purpose recognizer can mishear, drop or invent words
+ */
+export type UncertainReason = "recognizers-disagree" | "low-confidence" | "confusable" | "unconfirmed";
+
 export type MistakeType = "omitted" | "added" | "incorrect" | "order" | "hesitation" | "uncertain";
 
 export interface RecognizedWord {
@@ -173,7 +182,7 @@ export interface RecitationMistake {
   /** seconds of silence for hesitation */
   pauseSec?: number;
   /** For "uncertain": why we could not tell a recitation error from a recognition error. */
-  reason?: "recognizers-disagree" | "low-confidence" | "confusable";
+  reason?: UncertainReason;
   /** For "uncertain": the recognizer's own probability for the heard word, when it provided one. */
   confidence?: number;
 }
@@ -188,7 +197,7 @@ export interface AyahRecitationResult {
    */
   status: "mastered" | "needs-review" | "missed" | "uncertain";
   /** per expected word: matched / mismatched / omitted / uncertain (recognizer doubt) */
-  words: { text: string; state: "ok" | "incorrect" | "omitted" | "uncertain"; heard?: string; reason?: "recognizers-disagree" | "low-confidence" | "confusable"; confidence?: number }[];
+  words: { text: string; state: "ok" | "incorrect" | "omitted" | "uncertain"; heard?: string; reason?: UncertainReason; confidence?: number }[];
   mistakes: RecitationMistake[];
 }
 
@@ -200,6 +209,19 @@ export interface RecitationAnalysis {
   extraWords: string[];
   /** Words we could not attribute to the learner rather than to the recognizer — excluded from the score. */
   uncertainWords: number;
+  /** Expected words matched exactly / expected words in total (the honest headline number). */
+  matchedWords: number;
+  expectedWords: number;
+  /**
+   * How well the recognizer heard this recitation. "poor"/"empty": too little of the expected text was
+   * recognized to judge anything — the learner is asked to repeat and NOTHING is counted against them.
+   */
+  recognition: "good" | "poor" | "empty";
+  /**
+   * Whether this result may change learning state. False when the transcript did not come from the server
+   * recognizer we have measured (e.g. on-device speech, simulation): shown to the learner as practice only.
+   */
+  learningEligible: boolean;
   transcript: Transcript;
   /** Always true: text matching only, never acoustic tajweed assessment. */
   textOnly: true;

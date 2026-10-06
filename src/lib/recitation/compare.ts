@@ -16,6 +16,7 @@ import type {
   RecitationAnalysis,
   RecitationMistake,
   Transcript,
+  UncertainReason,
 } from "@/lib/types";
 
 export const FUZZY_OK = 0.75; // kept for reference; word equality is decided by isSameWord below
@@ -45,6 +46,18 @@ export const HESITATION_SEC = 3;
 export const LOW_WORD_CONFIDENCE = 0.5;
 /** At or above this the recognizer was confident: a differing word is then not put down to recognition doubt. */
 export const HIGH_WORD_CONFIDENCE = 0.85;
+
+/** Below this share of expected words recognized exactly, the recitation was not heard well enough to judge. */
+export const MIN_MATCHED_SHARE = 0.4;
+
+/**
+ * Only transcripts from the server recognizer we have measured on real recordings (whisper-1: it kept a
+ * deliberate wrong word where the GPT-4o family silently corrected it) may change learning state. Anything
+ * else — on-device speech whose behaviour we cannot inspect, simulations, other models — is practice only.
+ */
+export function isLearningEligible(t: Pick<Transcript, "provider">): boolean {
+  return /^openai:whisper/.test(t.provider);
+}
 
 export interface ExpTok {
   ayahIdx: number;
@@ -158,7 +171,7 @@ export function align(E: { key: string }[], R: { key: string }[]): Op[] {
 }
 
 type WordState = AyahRecitationResult["words"][number];
-type Doubt = { reason: NonNullable<WordState["reason"]>; confidence?: number };
+type Doubt = { reason: UncertainReason; confidence?: number };
 
 interface DoubtContext {
   rangeKeys: Set<string>;
@@ -186,33 +199,38 @@ function buildDoubtContext(E: ExpTok[], t: Transcript): DoubtContext {
 }
 
 /**
- * A differing word is only called the learner's mistake if nothing suggests the RECOGNIZER may have
- * misheard. Evidence, strongest first (each only when it really exists):
- *   1. the word is a different word of this very passage → a genuine slip (a swap), not a recognition artefact
- *   2. a second recognizer heard it differently → uncertain; heard the same wrong word → a firmer signal
- *   3. the recognizer's own probability for the word is low, or the word sits in a segment it flagged unreliable
- *   4. no evidence either way: a letter-confusion plausibility check (heuristic, see confusion.ts)
+ * A differing word is attributed to the learner ONLY with corroborating evidence that the recognizer heard
+ * it right. A single general-purpose recognizer can mishear, drop or invent words (measured on real
+ * recordings), so on its own it is never enough. Corroboration, each only when it really exists:
+ *   - a second, independent recognizer heard the SAME different word, or
+ *   - the recognizer's own probability for the word is high AND the word is not in a segment it flagged.
+ * Everything else is "uncertain". Contradicting signals (recognizers disagree, low probability, an
+ * unreliable segment) pick a more specific reason; a plausible letter confusion is noted as such.
  * Returns null when the difference stands as the learner's.
  */
 function doubtFor(eFlat: number, e: ExpTok, h: RecTok, ctx: DoubtContext): Doubt | null {
-  if (h.key !== e.key && ctx.rangeKeys.has(h.key)) return null;
+  const inLowSegment =
+    h.start != null && ctx.lowSegments.some((s) => (h.start! + (h.end ?? h.start!)) / 2 >= s.start && (h.start! + (h.end ?? h.start!)) / 2 <= s.end);
 
   if (ctx.second) {
     const s2 = ctx.second.get(eFlat);
     if (s2 !== undefined) {
       if (isSameWord(s2, e.key)) return { reason: "recognizers-disagree" }; // the other recognizer heard the expected word
-      if (isSameWord(s2, h.key)) return null; // both heard the same different word
-      return { reason: "recognizers-disagree" }; // they heard different things
+      if (!isSameWord(s2, h.key)) return { reason: "recognizers-disagree" }; // they heard different things
+      if (!inLowSegment && !(h.confidence != null && h.confidence < LOW_WORD_CONFIDENCE)) return null; // both heard the same different word
     }
   }
 
   if (h.confidence != null && h.confidence < LOW_WORD_CONFIDENCE) return { reason: "low-confidence", confidence: h.confidence };
-  if (h.start != null && ctx.lowSegments.some((s) => (h.start! + (h.end ?? h.start!)) / 2 >= s.start && (h.start! + (h.end ?? h.start!)) / 2 <= s.end)) {
-    return { reason: "low-confidence" };
-  }
+  if (inLowSegment) return { reason: "low-confidence" };
   if (h.confidence != null && h.confidence >= HIGH_WORD_CONFIDENCE) return null; // the recognizer was sure
 
-  return plausibleRecognitionConfusion(e.key, h.key) ? { reason: "confusable" } : null;
+  return { reason: plausibleRecognitionConfusion(e.key, h.key) ? "confusable" : "unconfirmed" };
+}
+
+/** An omission is counted only if the second recognizer ALSO did not hear a word there. */
+function omissionConfirmed(eFlat: number, ctx: DoubtContext): boolean {
+  return ctx.second !== null && !ctx.second.has(eFlat);
 }
 
 function substitution(eFlat: number, e: ExpTok, h: RecTok, ctx: DoubtContext): WordState {
@@ -301,6 +319,15 @@ export function analyzeRecitation(
     }
   });
 
+  // ── Unconfirmed omissions ─────────────────────────────────────────────
+  // "Not heard" is not "not said": the recognizer drops words, and a learner who stopped early or recited
+  // only part of the range has simply not been heard past that point. Without a second recognizer that also
+  // heard nothing there, the word is uncertain — never an accusation.
+  E.forEach((tok, flat) => {
+    const w = words[tok.ayahIdx][tok.wordIdx];
+    if (w.state === "omitted" && !omissionConfirmed(flat, ctx)) words[tok.ayahIdx][tok.wordIdx] = { text: tok.display, state: "uncertain", reason: "unconfirmed" };
+  });
+
   // ── Mistakes per ayah ────────────────────────────────────────────────
   ayahs.forEach((a, ai) => {
     if (orderAyahs.has(ai)) mistakes.push({ type: "order", ayahKey: a.key });
@@ -334,27 +361,40 @@ export function analyzeRecitation(
   }
 
   // ── Scores ───────────────────────────────────────────────────────────
-  // Uncertain words (recognizer doubt) are NOT scored against the learner: they leave both the
-  // numerator and the denominator, and an ayah whose only differences are uncertain is "uncertain".
+  // Only CONFIRMED differences (corroborated by independent evidence) count against the learner:
+  //   incorrect (confirmed substitution) and omitted (confirmed by a second recognizer).
+  // Uncertain words leave both the numerator and the denominator. Extra words, repeated words, order and
+  // pauses are shown for information only: they cannot be confirmed from text alone and never score.
   const results: AyahRecitationResult[] = ayahs.map((a, ai) => {
     const ws = words[ai];
     const ok = ws.filter((w) => w.state === "ok").length;
     const unc = ws.filter((w) => w.state === "uncertain").length;
     const scored = ws.length - unc;
-    const added = mistakes.filter((m) => m.type === "added" && m.ayahKey === a.key).length;
-    const accuracy = scored > 0 ? Math.max(0, ok / (scored + added * 0.5)) : 0;
+    const accuracy = scored > 0 ? ok / scored : 0;
     const own = mistakes.filter((m) => m.ayahKey === a.key);
-    const certainError = own.some((m) => m.type === "omitted" || m.type === "order" || m.type === "incorrect");
+    const certainError = own.some((m) => m.type === "omitted" || m.type === "incorrect");
     const status: AyahRecitationResult["status"] =
       unc > 0 && !certainError ? "uncertain" : accuracy >= 0.9 && !certainError ? "mastered" : accuracy >= 0.5 ? "needs-review" : "missed";
     return { key: a.key, ayah: a.ayah, accuracy, status, words: ws, mistakes: own };
   });
 
   const totalWords = E.length;
-  const uncertainWords = results.reduce((s, r) => s + r.words.filter((w) => w.state === "uncertain").length, 0);
   const okWords = results.reduce((s, r) => s + r.words.filter((w) => w.state === "ok").length, 0);
-  const scoredWords = totalWords - uncertainWords;
-  const accuracy = scoredWords > 0 ? okWords / (scoredWords + extraWords.length * 0.5) : 0;
+
+  // Recognition quality: if too little of the expected text was recognized, nothing can be judged — the
+  // learner is asked to repeat, and no ayah is scored (whatever the cause: noise, a hallucinated transcript,
+  // a different passage, a very unclear recording).
+  const recognition: RecitationAnalysis["recognition"] = R.length === 0 ? "empty" : totalWords > 0 && okWords / totalWords < MIN_MATCHED_SHARE ? "poor" : "good";
+  if (recognition !== "good") {
+    for (const r of results) {
+      r.status = "uncertain";
+      r.words = r.words.map((w) => (w.state === "ok" ? w : { text: w.text, state: "uncertain" as const, reason: w.reason ?? ("unconfirmed" as const), ...(w.heard ? { heard: w.heard } : {}) }));
+      r.mistakes = r.mistakes.filter((m) => m.type !== "omitted" && m.type !== "incorrect");
+    }
+  }
+  const uncertainWords = results.reduce((s, r) => s + r.words.filter((w) => w.state === "uncertain").length, 0);
+  // Overall figure = share of expected words matched exactly (unjudged words are NOT silently counted as correct).
+  const accuracy = recognition === "good" && totalWords > 0 ? okWords / totalWords : 0;
 
   return {
     range,
@@ -363,6 +403,10 @@ export function analyzeRecitation(
     mistakes,
     extraWords,
     uncertainWords,
+    matchedWords: okWords,
+    expectedWords: totalWords,
+    recognition,
+    learningEligible: recognition === "good" && isLearningEligible(transcript),
     transcript,
     textOnly: true,
   };

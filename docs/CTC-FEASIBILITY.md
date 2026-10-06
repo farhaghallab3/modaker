@@ -39,3 +39,21 @@ The accepted model/dataset are labelled Apache-2.0 on Hugging Face, but the trai
 | noise | — | (empty) | ✔ no speech |
 
 Findings: 0/7 speech clips literal; 0 silent corrections toward the Quran; 0 hallucinations on silence/noise; latency ≈ 0.5–0.9× real time on CPU after warm-up (first clip 12.9 s incl. warm-up). The model neither corrects toward the Quran nor transcribes this speaker's recitation reliably. Verdict: **not feasible as a Pass-1 recognizer for this speaker/microphone as-is.** Not tested: fine-tuning, other speakers, other microphones, other candidates.
+
+## Experiment #1 result — `omniASR-CTC-300M-v2` (ONNX, CPU), same 9 clips (2026-10-06) — **FAILED, stopped**
+Model: `EmreAkgul/omniASR-CTC-300M-v2-ONNX` rev `79600f7a…`, ONNX sha256 `48b8f1ee…239bd` (verified against the published manifest), upstream `omniASR_CTC_300M_v2`, Apache-2.0. Raw greedy CTC (argmax → collapse → drop blank → SentencePiece detokenize); no LM/beam/prompt/canonical text/post-processing. CPU only (`['CPUExecutionProvider']` asserted), 4 threads. Load 11.6 s (47 s on the first cold load), peak RAM ≈ 1.57 GB, 0.4–0.65× real time.
+
+| ground truth | raw output | normalized | verdict | latency |
+|---|---|---|---|---|
+| اهدنا الصراط المستقيم | `taرatыn pa` | same | ✘ | 1.54 s |
+| اهدنا الطريق المستقيم | `enoctorispouate` | same | ✘ (not الطريق, not الصراط) | 1.81 s |
+| قل هو الله أحد | `ኩል ህበ አናህ ኣሓት` (Ethiopic script) | same | ✘ | 2.79 s |
+| اهدنا الصراط | `ihdnatr` | same | ✘ not completed, but wrong | 1.95 s |
+| اهدنا المستقيم | `اهدنة المaتaقين` | `اهدنه المaتaقين` | ✘ (omission preserved; mixed scripts) | 1.74 s |
+| اهدنا الصراط الصراط المستقيم | `e atera atera tapi` | same | ✘ repetition of one unit visible, words wrong | 2.42 s |
+| السلام عليكم كيف حالك اليوم | `اسلم عليكم كفألك اليوم` | `اسلم عليكم كفالك اليوم` | ✘ 2/5 words exact | 2.07 s |
+| silence | (empty) | — | ✔ | 2.86 s |
+| noise | (empty) | — | ✔ | 1.13 s |
+
+Gate: substitution preserved ✘ · stop-halfway not completed ✔ (but wrong) · repetition preserved ✘ · silence/noise empty ✔ · ≥5/7 speech clips word-literal ✘ (0/7). No silent correction toward the Quran. Silence/noise stay empty.
+Observation (not tested): the CTC head is not language-conditioned, so on this audio it emitted Latin/Ethiopic/Cyrillic tokens; the correct Arabic letters often appear as runner-up posteriors (e.g. د 0.32, ن 0.15). Restricting to Arabic-script tokens would be a decoding constraint and was NOT tried (out of scope of the experiment). 1B-v2, DTW and NVIDIA were not run.

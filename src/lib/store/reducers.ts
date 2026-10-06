@@ -62,12 +62,16 @@ export function applyMarkMemorized(s: UserState, range: AyahRange, now = new Dat
  */
 export function applyRecitation(s: UserState, analysis: RecitationAnalysis, now = new Date(), recId = uid("rec")): UserState {
   const progress = { ...s.progress };
-  for (const r of analysis.ayahs) {
+  // Practice-only results (recognizer we have not validated, or too little was heard) never change learning
+  // state: the learner sees the feedback, the history records the attempt, review/mastery stay as they were.
+  const countsForLearning = analysis.learningEligible !== false && analysis.recognition !== "poor" && analysis.recognition !== "empty";
+  for (const r of countsForLearning ? analysis.ayahs : []) {
     // The only differences are words we cannot attribute to the learner (recognizer doubt): this
     // recitation says nothing about the ayah, so its review state and evidence stay exactly as they were.
     if (r.status === "uncertain") continue;
     const [surah, ayah] = r.key.split(":").map(Number);
-    const mistakes = r.mistakes.filter((m) => m.type !== "hesitation").length;
+    // only confirmed differences count as mistakes (extra words, order and pauses are informational)
+    const mistakes = r.mistakes.filter((m) => m.type === "incorrect" || m.type === "omitted").length;
     progress[r.key] = recordOutcome(progress[r.key], surah, ayah, { accuracy: r.accuracy, mistakes, recId }, now);
   }
   const { surah, from, to } = analysis.range;
@@ -82,11 +86,12 @@ export function applyRecitation(s: UserState, analysis: RecitationAnalysis, now 
     mastered: analysis.ayahs.filter((a) => a.status === "mastered").length,
     needsReview: analysis.ayahs.filter((a) => a.status === "needs-review" || a.status === "missed").length,
     uncertain: analysis.ayahs.filter((a) => a.status === "uncertain").length,
+    ...(countsForLearning ? {} : { practice: true }),
   };
   return {
     ...s,
     progress,
     recitations: [summary, ...s.recitations].slice(0, 100),
-    activity: bumpActivity({ ...s, activity: bumpActivity(s, "recitations", 1) }, "reviewed", analysis.ayahs.filter((a) => a.status !== "uncertain").length),
+    activity: bumpActivity({ ...s, activity: bumpActivity(s, "recitations", 1) }, "reviewed", countsForLearning ? analysis.ayahs.filter((a) => a.status !== "uncertain").length : 0),
   };
 }

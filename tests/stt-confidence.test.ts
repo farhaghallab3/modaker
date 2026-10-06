@@ -191,25 +191,36 @@ test("evidence decides: second recognizer, word probability, unreliable segment,
   assert.equal(mk(timed(2))?.reason, "confusable", "outside the flagged segment only the plausibility heuristic applies");
 });
 
-test("saying another word OF THE PASSAGE is a genuine slip, not a recognition artefact", () => {
-  const a = analyze(tr("المستقيم المستقيم الرحمن")); // الصراط replaced by the next word
-  assert.equal(a.mistakes.find((m) => m.expected === "ٱلصِّرَٰطَ")?.type, "incorrect");
-  assert.equal(a.uncertainWords, 0);
+test("saying another word of the passage is NOT enough on its own — only independent corroboration confirms a difference", () => {
+  const alone = analyze(tr("المستقيم المستقيم الرحمن")); // الصراط replaced by the next word
+  const w = alone.mistakes.find((m) => m.expected === "ٱلصِّرَٰطَ");
+  assert.equal(w?.type, "uncertain");
+  assert.equal(w?.reason, "unconfirmed");
+  // a second recognizer heard the same different word → now it stands as the learner's difference
+  const both = analyze(tr("المستقيم المستقيم الرحمن", { evidence: { kind: "none", secondOpinion: { provider: "g", text: "المستقيم المستقيم الرحمن" } } }));
+  assert.equal(both.mistakes.find((m) => m.expected === "ٱلصِّرَٰطَ")?.type, "incorrect");
 });
 
-test("words that are not plausible confusions of the expected word stay the learner's difference", () => {
+test("a difference no signal corroborates is uncertain (unconfirmed) even when it is no plausible confusion", () => {
   const a = analyze(tr("الكتاب المستقيم الرحمن"));
-  assert.equal(a.mistakes.find((m) => m.expected === "ٱلصِّرَٰطَ")?.type, "incorrect");
-  assert.equal(a.ayahs[0].status, "needs-review");
+  const m = a.mistakes.find((x) => x.expected === "ٱلصِّرَٰطَ");
+  assert.equal(m?.type, "uncertain");
+  assert.equal(m?.reason, "unconfirmed");
+  assert.equal(a.ayahs[0].status, "uncertain");
+  assert.equal(a.transcript.text, "الكتاب المستقيم الرحمن", "the transcript is untouched");
 });
 
-test("a mixed ayah: certain differences are scored, uncertain words are excluded", () => {
-  // الصراط → الطرق (uncertain) and الرحمن omitted (certain)
-  const a = analyze(tr("الطرق المستقيم"));
-  assert.equal(a.uncertainWords, 1);
-  assert.ok(a.mistakes.some((m) => m.type === "omitted"));
-  assert.equal(a.ayahs[0].status, "needs-review", "a certain error keeps its normal status");
-  assert.ok(Math.abs(a.ayahs[0].accuracy - 1 / 2) < 1e-9, "1 correct of the 2 words that could be judged");
+test("with corroboration a confirmed difference is scored; without it nothing is", () => {
+  const second = { evidence: { kind: "none" as const, secondOpinion: { provider: "g", text: "الطرق المستقيم الرحمن" } } };
+  // الصراط → الطرق heard the same by both recognizers: a confirmed difference
+  const a = analyze(tr("الطرق المستقيم الرحمن", second));
+  assert.ok(a.mistakes.some((m) => m.type === "incorrect"));
+  assert.equal(a.ayahs[0].status, "needs-review");
+  assert.ok(Math.abs(a.ayahs[0].accuracy - 2 / 3) < 1e-9, "2 correct of 3 judged words");
+  // the same recitation heard by ONE recognizer only: nothing is attributed to the learner
+  const alone = analyze(tr("الطرق المستقيم الرحمن"));
+  assert.equal(alone.mistakes.filter((m) => m.type === "incorrect" || m.type === "omitted").length, 0);
+  assert.equal(alone.ayahs[0].status, "uncertain");
 });
 
 test("a perfect recitation is still mastered, and nothing is uncertain", () => {
@@ -233,10 +244,17 @@ test("an uncertain ayah changes NOTHING in the learning state (no weak, no revie
   assert.equal(after.activity.at(-1)!.reviewed, 0, "an unjudged ayah is not counted as reviewed");
 });
 
-test("a firm difference still schedules review, with the evidence attached", () => {
-  const after = applyRecitation(memorized(), analyze(tr("الكتاب المستقيم الرحمن")), new Date("2026-10-05T12:00:00Z"), "rec_f");
+test("a CORROBORATED difference still schedules review, with the evidence attached", () => {
+  const t = tr("الكتاب المستقيم الرحمن", { evidence: { kind: "none", secondOpinion: { provider: "g", text: "الكتاب المستقيم الرحمن" } } });
+  const after = applyRecitation(memorized(), analyze(t), new Date("2026-10-05T12:00:00Z"), "rec_f");
   assert.equal(isWeak(after.progress["1:1"]), true);
   assert.deepEqual(after.progress["1:1"].recent?.map((e) => e.recId), ["rec_f"]);
+});
+
+test("the SAME difference without corroboration changes nothing", () => {
+  const before = memorized();
+  const after = applyRecitation(before, analyze(tr("الكتاب المستقيم الرحمن")), new Date("2026-10-05T12:00:00Z"), "rec_u2");
+  assert.deepEqual(after.progress["1:1"], before.progress["1:1"]);
 });
 
 // ── transport & audit ────────────────────────────────────────────────────

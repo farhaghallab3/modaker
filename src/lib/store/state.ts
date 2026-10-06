@@ -20,6 +20,8 @@ export interface RecitationSummary {
   needsReview: number;
   /** ayahs we could not judge (recognizer doubt) — nothing was scored against the learner */
   uncertain?: number;
+  /** practice only: shown to the learner, but it did not change progress or review state */
+  practice?: boolean;
 }
 
 export interface Goals {

@@ -43,10 +43,10 @@ export const env = {
    */
   assistantGeneration: () => str("ASSISTANT_GENERATION", "off").toLowerCase() === "on",
   /**
-   * Transcription context. "domain" (default) = a generic sentence about the kind of audio; "surah" adds
+   * Transcription context. "off" (default — the measured configuration) = none; "domain" = a generic sentence about the kind of audio; "surah" adds
    * only the surah NAME; "off" = none. The expected ayah text is NEVER sent. See src/server/stt/prompt.ts.
    */
-  sttPrompt: () => str("STT_PROMPT", "domain") as "off" | "domain" | "surah",
+  sttPrompt: () => str("STT_PROMPT", "off") as "off" | "domain" | "surah",
   /**
    * A second, independent recognizer run on the same audio (e.g. "gpt-4o-transcribe"). Where the two disagree
    * about a word, the word is "uncertain" instead of being counted against the learner. "off" disables it.
