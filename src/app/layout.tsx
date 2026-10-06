@@ -1,25 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Amiri, IBM_Plex_Sans_Arabic } from "next/font/google";
 import { AppProvider } from "@/lib/store/AppProvider";
 import { BRAND, BRAND_ASSETS } from "@/lib/brand";
 import { DEFAULT_LOCALE, localeConfig } from "@/lib/i18n";
 import { themeInitScript } from "@/lib/theme";
+import "./fonts.css";
 import "./globals.css";
-
-const amiri = Amiri({
-  subsets: ["arabic", "latin"],
-  weight: ["400", "700"],
-  style: ["normal", "italic"],
-  variable: "--font-amiri",
-  display: "swap",
-});
-
-const plex = IBM_Plex_Sans_Arabic({
-  subsets: ["arabic", "latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-plex",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   // Absolute URLs for social previews; set NEXT_PUBLIC_APP_URL in production.
@@ -66,7 +51,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const { lang, dir } = localeConfig[DEFAULT_LOCALE];
   return (
-    <html lang={lang} dir={dir} className={`${amiri.variable} ${plex.variable}`} suppressHydrationWarning>
+    <html lang={lang} dir={dir} suppressHydrationWarning>
       <head>
         {/* Sets data-theme before first paint (no flash of the wrong theme). */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
