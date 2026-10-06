@@ -36,6 +36,7 @@ import { buildQuiz } from "./quiz";
 import { parseReferences, rangeSize, type ParsedReferences, type ReferenceContext } from "./references";
 import { ayahRefLabel, quranComUrl, TafsirRetriever, type Passage, type Retriever } from "./retriever";
 import { getSource, isApproved } from "./sources";
+import type { WebAnswerer } from "./web-answer";
 
 export interface AskInput {
   question: string;
@@ -55,6 +56,8 @@ export interface AssistantDeps {
   /** Lazy provider of the verified-Quran quotation index. Omit to skip quotation checks. */
   quoteIndex?: () => Promise<QuranQuoteIndex>;
   hadith?: HadithProvider;
+  /** Web-grounded answers from trusted Islamic sites (null/absent → retrieval only). */
+  web?: WebAnswerer | null;
 }
 
 export interface AssistantResult extends AssistantAnswer {
@@ -274,7 +277,7 @@ export function createAssistant(deps: AssistantDeps) {
 
       // ── hadith: never from memory ───────────────────────────────────────
       if (decision.intent === "hadith-request") {
-        if (!hadith.available) return abstain("no_hadith_source", { provider: "hadith:none" });
+        if (!hadith.available) return (await webAnswer()) ?? abstain("no_hadith_source", { provider: "hadith:none" });
         const found = await hadith.find(decision.cleanedQuestion);
         if (!found.length) return abstain("no_hadith_source", { provider: `hadith:${hadith.id}` });
         const citations: Citation[] = found.map((h) => ({ sourceId: h.sourceId, title: h.reference, ref: h.reference, excerpt: truncate(h.text, 240), sourceKind: "hadith" }));
@@ -331,6 +334,12 @@ export function createAssistant(deps: AssistantDeps) {
         refs = { surahs: [quote.match.surah], ranges: [{ surah: quote.match.surah, from: quote.match.from, to: quote.match.to }], fromContext: false };
       }
 
+      // ── web-grounded answer from trusted sites (Level B, or C) ─────────
+      if (!correction) {
+        const web = await webAnswer();
+        if (web) return web;
+      }
+
       // ── grounded path (Level B, or C) ───────────────────────────────────
       const grounded = await groundedAnswer(refs, decision, preTexts, preBlocks);
       if (!correction) return grounded;
@@ -360,6 +369,65 @@ export function createAssistant(deps: AssistantDeps) {
     }
 
     // ── flows ─────────────────────────────────────────────────────────────
+
+    /**
+     * Answer from trusted Islamic websites. null → not available or nothing reliable found, so the
+     * caller continues with its usual path. Never used for injection attempts.
+     */
+    async function webAnswer(): Promise<AssistantResult | null> {
+      if (!deps.web || decision.flags.injection) return null;
+      const sensitive = decision.level === "C";
+      let res;
+      try {
+        res = await deps.web.answer(decision.cleanedQuestion || q, { sensitive });
+      } catch (e) {
+        console.warn("[assistant] web answer failed:", (e as Error).message);
+        return null;
+      }
+      if (res.status === "out_of_scope") return abstain("out_of_scope", { provider: deps.web.id });
+      if (res.status === "needs_scholar") return referral();
+      if (res.status !== "answered") return null;
+
+      // Verses the answer refers to are shown from the verified Mushaf, never from the model.
+      const cited = parseReferences(res.text);
+      const ranges = cited.ranges.length ? cited.ranges : refs.ranges;
+      let verses: Ayah[] | undefined;
+      const citations = [...res.citations];
+      const quranBlocks: AnswerBlock[] = [];
+      if (ranges.length && rangeSize(ranges) <= ATTACH_VERSES_MAX) {
+        try {
+          verses = await loadVerses(deps.quran, ranges, ATTACH_VERSES_MAX);
+          if (verses.length) {
+            const source = (await deps.quran.getSurah(verses[0].surah)).source;
+            quranBlocks.push({ type: "quran", verses, source });
+            citations.push(quranCitation(source, groupRanges(verses)));
+          }
+        } catch {
+          verses = undefined; // the answer stands on its own sources
+        }
+      }
+      const preface: AnswerBlock[] = sensitive
+        ? [{ type: "warning", text: TEMPLATES.sensitiveC.text, code: "sensitive", templateId: TEMPLATES.sensitiveC.id, templateVersion: TEMPLATES.sensitiveC.version }]
+        : [];
+      const note: AnswerBlock[] = sensitive
+        ? [{ type: "warning", text: TEMPLATES.consultScholar.text, code: "sensitive", templateId: TEMPLATES.consultScholar.id, templateVersion: TEMPLATES.consultScholar.version }]
+        : [];
+      return finish({
+        type: sensitive ? "sensitive_sourced" : "sourced_explanation",
+        text: compose(sensitive ? TEMPLATES.sensitiveC.text : undefined, res.text, sensitive ? TEMPLATES.consultScholar.text : undefined),
+        provider: res.model ? `anthropic-web:${res.model}` : deps.web.id,
+        citations,
+        verses,
+        generationUsed: true,
+        blocks: [
+          ...preBlocks,
+          ...preface,
+          { type: "explanation", text: res.text, origin: "generated", citations: res.citations.map((_, i) => i + 1) },
+          ...note,
+          ...quranBlocks,
+        ],
+      });
+    }
 
     async function checkQuote(text: string) {
       if (!deps.quoteIndex || tokenCount(text) < 4) return null;
@@ -597,8 +665,15 @@ export async function answerQuestion(input: AskInput): Promise<AssistantAnswer> 
   const parts: Retriever[] = [new retrievers.TafsirRetriever(quran, "muyassar")];
   const embedder = getEmbeddingProvider();
   if (hasDatabase() && embedder) parts.push(new retrievers.PgVectorRetriever(embedder));
+  const { ClaudeWebAnswerer, DEFAULT_TRUSTED_DOMAINS } = await import("./web-answer");
+  const domains = env.assistantTrustedDomains();
+  const web =
+    env.assistantWebSearch() && env.anthropicApiKey()
+      ? new ClaudeWebAnswerer(env.anthropicApiKey(), env.assistantWebModel(), domains.length ? domains : DEFAULT_TRUSTED_DOMAINS)
+      : null;
   const assistant = createAssistant({
     quran,
+    web,
     retriever: new retrievers.HybridRetriever(parts),
     llm: getLlmProvider(),
     generationEnabled: env.assistantGeneration(),

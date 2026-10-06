@@ -19,7 +19,7 @@ export interface Template {
 }
 
 /** Identifies the current set of fixed wording; bump together with any template change. */
-export const TEMPLATE_SET_VERSION = "2026-10-06.1";
+export const TEMPLATE_SET_VERSION = "2026-10-06.2";
 
 const t = (id: string, text: string, approval: TemplateApproval, version = 1): Template => ({ id, version, text, approval });
 
@@ -70,8 +70,15 @@ export const TEMPLATES = {
   ),
   scope: t(
     "scope.offtopic",
-    "أنا مساعد مُدّكِر، وأختص بمساعدتك في حفظ القرآن الكريم وفهم معانيه من مصادر موثوقة. يسعدني أن تسألني عن آية أو سورة أو قصة قرآنية.",
+    "هذا السؤال خارج إطار مُدّكِر؛ فهو منصة إسلامية تختص بالقرآن الكريم والسنة النبوية والعلوم الشرعية. يسعدني أن تسألني عن آية أو حديث أو مسألة في الدين.",
     "operational",
+    2,
+  ),
+  /** Shown under web-sourced answers to ruling (fiqh) questions. */
+  consultScholar: t(
+    "web.consult",
+    "هذا عرض عام لما ورد في المصادر، وليس فتوى. إن كانت المسألة تخص حالتك أنت، فالأفضل أن تستشير عالمًا أو مفتيًا موثوقًا.",
+    "pending_scholarly_review",
   ),
   injection: t("safety.injection", "لا يمكنني تغيير قواعد الأمان أو الإجابة بغير الاعتماد على المصادر الموثقة.", "operational"),
   hostile: t("safety.hostile", "سؤالك مهم، وسأجيب عن مضمونه بهدوء من المصادر المتاحة.", "operational"),

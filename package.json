@@ -19,6 +19,7 @@
     "quran:cache": "tsx scripts/import-quran.ts --json-only"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@prisma/client": "^6.1.0",
     "next": "^15.1.0",
     "react": "^19.0.0",

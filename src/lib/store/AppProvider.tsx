@@ -17,6 +17,13 @@ import type {
   ResumePoint,
   UserProfile,
 } from "@/lib/types";
+import {
+  createDeviceAccount,
+  hasDeviceAccount,
+  removeDeviceAccount,
+  saveDeviceAccountState,
+  verifyDeviceAccount,
+} from "./device-accounts";
 import { createRepository, isApiMode } from "./repository";
 import { applyMarkMemorized, applyRecitation } from "./reducers";
 import { EMPTY_STATE, todayKey, uid, type Goals, type PrivacySettings, type UserState } from "./state";
@@ -64,6 +71,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const repo = useRef(createRepository());
   const [state, setState] = useState<UserState>(EMPTY_STATE);
   const [ready, setReady] = useState(false);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     let alive = true;
@@ -81,7 +90,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // persist after every change once loaded
   useEffect(() => {
-    if (ready) void repo.current.save(state);
+    if (!ready) return;
+    void repo.current.save(state);
+    if (!isApiMode()) saveDeviceAccountState(state); // each device account keeps its own copy
   }, [state, ready]);
 
   const update = useCallback((fn: (s: UserState) => UserState) => setState((s) => fn(s)), []);
@@ -99,7 +110,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body.error ?? "تعذّر إنشاء الحساب");
         }
+        const deviceOnly = !res?.ok;
+        if (deviceOnly && hasDeviceAccount(email)) throw new Error("هذا البريد مسجّل مسبقًا. سجّل الدخول بدلًا من إنشاء حساب جديد.");
         const userId = res?.ok ? ((await res.json()).user?.id ?? uid("u")) : uid("local");
+        if (deviceOnly) await createDeviceAccount(email, userId, password, null);
         update(() => ({
           ...EMPTY_STATE,
           session: { userId, email },
@@ -143,10 +157,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           else setState(loaded && !loaded.demo && loaded.profile?.email === email ? { ...loaded, session } : { ...EMPTY_STATE, session });
           return;
         }
-        update((s) => {
-          if (!s.demo && s.profile?.email === email) return { ...s, session: s.session ?? { userId: uid("local"), email } }; // same device account
-          return { ...EMPTY_STATE, session: { userId: uid("local"), email } };
-        });
+        // Device-only account (no database on the server): recognise the email and check the password.
+        const account = await verifyDeviceAccount(email, password);
+        if (account) {
+          setState({ ...(account.state ?? EMPTY_STATE), demo: false, session: { userId: account.userId, email } });
+          return;
+        }
+        if (hasDeviceAccount(email)) throw new Error("البريد الإلكتروني أو كلمة المرور غير صحيحة");
+        // An account created on this device before accounts were stored per email: adopt it once.
+        const legacy = await repo.current.load().catch(() => null);
+        if (legacy && !legacy.demo && legacy.profile?.email === email) {
+          const userId = legacy.session?.userId ?? legacy.profile.id ?? uid("local");
+          await createDeviceAccount(email, userId, password, { ...legacy, session: null });
+          setState({ ...legacy, session: { userId, email } });
+          return;
+        }
+        throw new Error("لا يوجد حساب بهذا البريد الإلكتروني. أنشئ حسابًا أولًا.");
       },
       async signOut() {
         await fetch("/api/v1/auth/logout", { method: "POST" }).catch(() => null);
@@ -239,8 +265,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         update((s) => ({ ...s, privacy: { ...s.privacy, ...p } }));
       },
       async deleteAllData() {
+        const email = stateRef.current.session?.email;
         await repo.current.clear();
         await fetch("/api/v1/me", { method: "DELETE" }).catch(() => null);
+        if (email) removeDeviceAccount(email);
         setState(EMPTY_STATE);
       },
     }),
