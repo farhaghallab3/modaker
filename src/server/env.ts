@@ -31,6 +31,9 @@ export const env = {
   openaiBaseUrl: () => str("OPENAI_BASE_URL", "https://api.openai.com/v1").replace(/\/+$/, ""),
   openaiSttModel: () => str("OPENAI_STT_MODEL", "whisper-1"),
   openaiChatModel: () => str("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+  /** Session Coach (short personalized plan message). On by default when an OpenAI key exists; "off" = deterministic template only. */
+  coachAi: () => str("COACH_AI", "on").toLowerCase() !== "off",
+  coachModel: () => str("COACH_MODEL", str("OPENAI_CHAT_MODEL", "gpt-4o-mini")),
   openaiEmbeddingModel: () => str("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
 
   llmProvider: () => str("LLM_PROVIDER", "extractive") as "anthropic" | "openai" | "extractive",
