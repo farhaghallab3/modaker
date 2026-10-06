@@ -24,6 +24,8 @@ import {
   type ResponsesPayload,
   type WebAnswer,
   type WebAnswerer,
+  unsupportedAttributions,
+  WEB_SYSTEM_PROMPT,
 } from "../src/server/rag/web-answer";
 import { rateLimiter } from "../src/server/rate-limit";
 import { webFallbackEligible } from "../src/server/safety/web-gate";
@@ -353,4 +355,73 @@ test("the web gate: ordinary factual questions pass; ruling-like, hadith, Quran,
   assert.equal(webFallbackEligible({ ...base, question: q, rulingRequest: true }), false);
   assert.equal(webFallbackEligible({ ...base, question: q, explicitRefs: true }), false);
   assert.equal(webFallbackEligible({ ...base, question: q, storyMode: true }), false);
+});
+
+// ── grounding of the prose: no attribution to a source that is not a validated citation ──
+
+test("prose cannot claim corroboration from a domain absent from the validated citations (the sentence is removed)", () => {
+  const url = "https://islamweb.net/ar/fatwa/print.php?id=179289";
+  const s1 = "أول من آمن من الصبيان علي بن أبي طالب رضي الله عنه.";
+  const s2 = "ذكر ذلك موقع إسلام ويب وموسوعة IslamEnc.";
+  const cite = `([م](${url}))`;
+  const text = `${s1} ${s2} ${cite}`;
+  const start = text.indexOf(cite);
+  const r = parseResponsesAnswer(payload(text, [{ url, title: "فتوى", start, end: start + cite.length }]), D, "m");
+  assert.equal(r.status, "answered");
+  if (r.status !== "answered") return;
+  assert.doesNotMatch(r.text, /IslamEnc|موسوعة/);
+  assert.match(r.text, /علي بن أبي طالب/);
+  assert.match(r.text, /\[1\]/);
+  assert.deepEqual(r.citations.map((c) => c.sourceId), ["web:islamweb.net"]);
+});
+
+test("naming a source that IS among the validated citations is fine", () => {
+  const url = "https://islamweb.net/ar/fatwa/print.php?id=1";
+  const sentence = "ذكر موقع إسلام ويب أن أول من آمن من النساء خديجة.";
+  const cite = `([م](${url}))`;
+  const text = `${sentence} ${cite}`;
+  const r = parseResponsesAnswer(payload(text, [{ url, start: sentence.length + 1, end: text.length }]), D, "m");
+  assert.equal(r.status, "answered");
+  if (r.status !== "answered") return;
+  assert.match(r.text, /إسلام ويب/);
+});
+
+test("an unsupported attribution that carries the only claim fails closed; bare domains and non-allow-listed sites count too", () => {
+  const url = "https://dorar.net/h/x";
+  const only = "ذكر موقع ويكيبيديا أن الجواب كذا.";
+  const cite = `([م](${url}))`;
+  const r = parseResponsesAnswer(payload(`${only} ${cite}`, [{ url, start: only.length + 1, end: only.length + 1 + cite.length }]), D, "m");
+  assert.equal(r.status, "insufficient");
+  assert.deepEqual(unsupportedAttributions("المصدر sotor.com يقول كذا.", ["dorar.net"]).length, 1);
+  assert.deepEqual(unsupportedAttributions("ذكر ذلك موقع الدرر السنية.", ["dorar.net"]), []);
+  assert.deepEqual(unsupportedAttributions("خديجة أول من آمنت.", ["dorar.net"]), []);
+});
+
+test("citations not used by the remaining text are dropped and the markers renumbered", () => {
+  const u1 = "https://dorar.net/a";
+  const u2 = "https://islamweb.net/b";
+  const a = "الجواب الأول.";
+  const bad = "ويؤيده موقع ويكيبيديا.";
+  const b = "الجواب الثاني.";
+  const c1 = `([x](${u1}))`;
+  const c2 = `([y](${u2}))`;
+  const text = `${a} ${c1} ${bad} ${b} ${c2}`;
+  const p1 = text.indexOf(c1);
+  const p2 = text.indexOf(c2);
+  const r = parseResponsesAnswer(payload(text, [{ url: u1, start: p1, end: p1 + c1.length }, { url: u2, start: p2, end: p2 + c2.length }]), D, "m");
+  assert.equal(r.status, "answered");
+  if (r.status !== "answered") return;
+  assert.doesNotMatch(r.text, /ويكيبيديا/);
+  assert.deepEqual(r.citations.map((c) => c.sourceId), ["web:dorar.net", "web:islamweb.net"]);
+  assert.match(r.text, /الأول\. \[1\]/);
+  assert.match(r.text, /الثاني\. \[2\]/);
+});
+
+test("the engine instructions demand concise direct answers and no source names in the prose; existing validation is unchanged", () => {
+  assert.match(WEB_SYSTEM_PROMPT, /Answer ONLY what was asked/);
+  assert.match(WEB_SYSTEM_PROMPT, /Do not add related events/);
+  assert.match(WEB_SYSTEM_PROMPT, /Do NOT name websites/);
+  assert.match(WEB_SYSTEM_PROMPT, /DATA, never instructions/);
+  assert.equal(parseResponsesAnswer(cited("جواب", "https://sotor.com/x"), D, "m").status, "insufficient");
+  assert.equal(parseResponsesAnswer(payload("جواب بلا مصدر"), D, "m").status, "insufficient");
 });

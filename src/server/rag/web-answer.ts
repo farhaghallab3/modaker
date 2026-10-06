@@ -12,6 +12,7 @@
  * deterministic router + `webFallbackAllowed()` in assistant.ts — never by this file. Quran/tafsir,
  * hadith, fiqh, personal cases, asbab and off-topic questions never get here.
  */
+import { normalizeArabic } from "@/lib/quran/normalize";
 import type { Citation } from "@/lib/types";
 import { env } from "../env";
 import { LIMITS, rateLimiter } from "../rate-limit";
@@ -50,10 +51,52 @@ Scope (fail closed)
 - If the question asks for a RULING (what is permitted, forbidden, valid, obligatory), for a fatwa, about worship practice, about the authenticity/grading/text of a hadith, about the meaning or revelation-reason of a Quran verse, or describes the asker's own situation, reply with exactly ${SENTINELS.scholar} and nothing else.
 
 Style
-- Natural, calm Modern Standard Arabic, concise (usually 1–4 sentences). Start with the answer itself. No warnings, no preamble.
+- Answer ONLY what was asked, directly, in one or two short sentences. Start with the answer itself («أبو بكر الصديق رضي الله عنه.»). Do not add related events, other people, background or extra facts unless they are needed to answer the question itself.
+- Do NOT name websites, sources, institutions or authors in the answer text, and never say that a source "also" or "likewise" states something: the platform shows the sources itself. Use the citation mechanism only.
+- Natural, calm Modern Standard Arabic. No warnings, no preamble.
 - Do not quote Quran verses or hadith texts. Never invent a name, date, number or reference.`;
 
 // ── citations ────────────────────────────────────────────────────────────
+
+/**
+ * Names under which a source may be mentioned in prose (normalized). Prose may name only a source that is among the
+ * validated citations of THIS answer; a mention of any other known source is an unsupported attribution.
+ */
+const SOURCE_NAMES: Record<string, string[]> = {
+  "islamweb.net": ["اسلام ويب", "islamweb", "islam web"],
+  "dorar.net": ["الدرر السنيه", "موقع الدرر", "dorar"],
+  "islamenc.com": ["موسوعه المحتوي الاسلامي", "islamenc", "islam enc", "islamic encyclopedia", "islamic content"],
+  "dar-alifta.org": ["دار الافتاء", "dar-alifta", "dar al-ifta", "dar alifta"],
+  // known sites that are NOT on the allow-list: naming them is never supported
+  "islamqa.info": ["الاسلام سؤال وجواب", "islamqa", "islam qa"],
+  "sunnah.com": ["sunnah.com"],
+  "wikipedia.org": ["ويكيبيديا", "wikipedia"],
+  "alukah.net": ["الالوكه", "alukah"],
+  "aljazeera.net": ["الجزيره نت", "aljazeera"],
+  "binbaz.org.sa": ["ابن باز", "binbaz"],
+  "alifta.gov.sa": ["اللجنه الدائمه", "alifta"],
+  "hadeethenc.com": ["hadeethenc", "موسوعه الاحاديث النبويه"],
+  "quran.com": ["quran.com"],
+};
+
+/** Sentences that name a known source (or a bare domain) that is not in `citedHosts`. */
+export function unsupportedAttributions(text: string, citedHosts: string[]): string[] {
+  const cited = (h: string) => citedHosts.some((c) => c === h || c.endsWith(`.${h}`) || h.endsWith(`.${c}`));
+  const bad: string[] = [];
+  // a sentence = its words + terminator + the [n] markers that follow it
+  for (const sentence of text.match(/(?:[^.!؟?\n]|\.(?=[A-Za-z0-9-]))+[.!؟?]?(?:\s*(?:\[\d+\])+)*/g) ?? []) {
+    const n = normalizeArabic(sentence).toLowerCase();
+    const raw = sentence.toLowerCase();
+    let unsupported = false;
+    for (const [host, names] of Object.entries(SOURCE_NAMES)) {
+      if (cited(host)) continue;
+      if (names.some((x) => n.includes(x) || raw.includes(x))) unsupported = true;
+    }
+    for (const m of raw.matchAll(/\b([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:net|com|org|info|gov|edu|sa))\b/g)) if (!citedHosts.some((c) => m[1] === c || m[1].endsWith(`.${c}`))) unsupported = true;
+    if (unsupported) bad.push(sentence);
+  }
+  return bad;
+}
 
 const isAllowedHost = (host: string, domains: string[]) => {
   const h = host.toLowerCase();
@@ -145,6 +188,22 @@ export function parseResponsesAnswer(payload: ResponsesPayload, domains: string[
   text = text.replace(/\(\s*\)/g, "").replace(/[ \t]+\n/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
 
   if (!citations.length || !text) return { status: "insufficient", model };
+
+  // The prose may only attribute a claim to a source that is among the validated citations: otherwise that sentence is removed.
+  const bad = unsupportedAttributions(text, citations.map((c) => c.ref));
+  if (bad.length) {
+    // Remove the attributing sentence but keep the [n] markers it carried: they cite the claim made just before it.
+    for (const b of bad) text = text.replace(b, b.match(/(?:\s*\[\d+\])+\s*$/)?.[0] ?? "");
+    text = text.replace(/[ \t]{2,}/g, " ").replace(/\n{2,}/g, "\n").trim();
+    // keep only the citations the remaining text still uses, renumbered in order of appearance
+    const used = [...new Set([...text.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])))];
+    // what is left must still be a real statement, not just markers or punctuation
+    if (!used.length || text.replace(/\[\d+\]/g, "").replace(/[\s.،؟!:؛-]/g, "").length < 6) return { status: "insufficient", model };
+    const map = new Map(used.map((old, i) => [old, i + 1]));
+    text = text.replace(/\[(\d+)\]/g, (_m, d) => `[${map.get(Number(d)) ?? d}]`);
+    const kept = used.map((old) => citations[old - 1]).filter(Boolean);
+    return { status: "answered", text, citations: kept, model };
+  }
   return { status: "answered", text, citations, model };
 }
 
