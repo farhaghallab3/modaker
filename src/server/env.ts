@@ -75,6 +75,15 @@ export const env = {
       .split(",")
       .map((d) => d.trim().toLowerCase())
       .filter(Boolean),
+  /**
+   * Spoken assistant answers (OpenAI text-to-speech, output only). On by default when an OpenAI key and SESSION_SECRET exist; "off" hides the speaker.
+   * Model/voice were chosen by a real Arabic probe (see src/server/tts/speech.ts); the overrides below are optional.
+   */
+  assistantTts: () => str("ASSISTANT_TTS", "on").toLowerCase() !== "off",
+  ttsModel: () => str("TTS_MODEL", "gpt-4o-mini-tts"),
+  ttsVoice: () => str("TTS_VOICE", "marin"),
+  /** Daily cap on speech requests per server instance (cost protection). */
+  ttsDailyCap: () => int("ASSISTANT_TTS_DAILY_CAP", 300),
   /** Hadith source. "hadeethenc" = the official HadeethEnc API (no key); anything else → hadith requests abstain. */
   hadithProvider: () => str("HADITH_PROVIDER", "off").toLowerCase(),
   embeddingProvider: () => str("EMBEDDING_PROVIDER", "openai") as "openai" | "none",

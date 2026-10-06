@@ -9,6 +9,7 @@ import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import { uid } from "@/lib/store/state";
 import type { AssistantAnswer, ChatMessage } from "@/lib/types";
 import { AnswerView } from "./AnswerView";
+import { SpeakButton } from "./SpeakButton";
 import { useVoiceQuestion, VoiceButton } from "./VoiceQuestion";
 
 export interface AssistantContext {
@@ -206,11 +207,14 @@ export function AIChat({
                   <div className="min-w-0 flex-1">
                     <span className="sr-only">إجابة مُدّكِر: </span>
                     {m.answer ? (
-                      <AnswerView
-                        answer={m.answer}
-                        idPrefix={m.id}
-                        onRetry={m.answer.kind === "unavailable" ? () => retry(m.id) : undefined}
-                      />
+                      <>
+                        <AnswerView
+                          answer={m.answer}
+                          idPrefix={m.id}
+                          onRetry={m.answer.kind === "unavailable" ? () => retry(m.id) : undefined}
+                        />
+                        <SpeakButton answer={m.answer} id={m.id} />
+                      </>
                     ) : (
                       <p className="leading-8">{m.content}</p>
                     )}

@@ -724,5 +724,8 @@ export async function answerQuestion(input: AskInput): Promise<AssistantAnswer> 
   });
   const { meta, ...answer } = await assistant.answer(input);
   if (meta?.issues.length) console.warn("[assistant] verifier removed:", meta.issues.map((i) => i.code).join(","));
-  return answer;
+  // Speaker button: only the generated explanation text, signed so the speech endpoint cannot be used as a generic TTS proxy.
+  const { speechFor } = await import("../tts/speech");
+  const speech = speechFor(answer);
+  return speech ? { ...answer, speech } : answer;
 }

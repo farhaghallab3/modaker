@@ -408,6 +408,8 @@ export interface AssistantAnswer {
   referral?: boolean;
   /** Shown near the assistant: it is an AI tool, not a scholar. */
   disclosure?: string;
+  /** Present only when the generated explanation may be read aloud; the signature is what lets the browser ask for exactly this text. */
+  speech?: { text: string; exp: number; sig: string };
 }
 
 export interface ChatMessage {

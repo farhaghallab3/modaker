@@ -59,6 +59,8 @@ export const LIMITS = {
   coach: { limit: 30, windowMs: 10 * 60_000 },
   /** Trusted-web fallback (each call costs a search): per user / IP. The daily cap is ASSISTANT_WEB_DAILY_CAP. */
   webFallback: { limit: 6, windowMs: 10 * 60_000 },
+  /** Spoken answers (each call costs TTS): per user / IP. The daily cap is ASSISTANT_TTS_DAILY_CAP. */
+  speech: { limit: 12, windowMs: 10 * 60_000 },
   auth: { limit: 10, windowMs: 15 * 60_000 },
   default: { limit: 120, windowMs: 60_000 },
 } as const;
