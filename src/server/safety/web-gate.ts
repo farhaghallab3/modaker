@@ -35,6 +35,20 @@ const ANCHOR_PHRASES = [
   "ابو طالب", "ابو جهل", "ابو لهب", "عمار بن ياسر", "سميه بنت خياط", "مصعب بن عمير", "سلمان الفارسي", "ابو ذر", "عبد الرحمن بن عوف", "سعد بن ابي وقاص", "صلاح الدين", "طارق بن زياد",
 ];
 
+/**
+ * Narrow sirah / early-Islamic-history formulations that carry no explicit Islamic word: «أول من آمن…», «أول مؤذن», «أول شهيد».
+ * Deliberately specific (an «أول …» question qualifies only with one of these religious-history nouns/verbs) — NOT every «من …؟».
+ */
+const HISTORY_PATTERNS: RegExp[] = [
+  /(?:^| )اول (?:من )?(?:اسلم|هاجر|استشهد|اذن|دعا الي الاسلام)(?: |$)/,
+  // «آمن» alone is ordinary English-style "believe": it needs the religious object or end of question («أول من آمن؟»)
+  /(?:^| )اول (?:من )?امن(?:(?: من (?:الرجال|النساء|الصبيان|الاطفال|الفتيان|الشباب|الموالي|العبيد|الاحرار)| (?:بالله|بالنبي|بالرسول|بمحمد|بالاسلام|بالدعوه|به|معه))(?: |$)|$)/,
+  /(?:^| )اول (?:موذن|شهيد|مسلم|مسلمه|مومن|مومنه|خليفه|خلفاء|مهاجر|مهاجره|من صلي مع)(?: |$)/,
+  /(?:^| )(?:صاحب|رفيق) (?:النبي|الرسول) في (?:الهجره|الغار)(?: |$)/,
+  /(?:^| )(?:ليله|يوم) (?:الهجره|بدر|احد|الخندق|الفتح|حنين)(?: |$)/,
+  /(?:^| )(?:ام المومنين|امهات المومنين)(?: |$)/,
+];
+
 /** First-person / family situation markers: a personal case is never a web question. (Not «علي» or «أبي»: they occur in names.) */
 const PERSONAL = new Set(["انا", "زوجتي", "زوجي", "امي", "اختي", "اخي", "عندي", "حالتي", "مشكلتي", "ولدي", "بنتي", "ابني"]);
 
@@ -68,7 +82,7 @@ export function webFallbackEligible(i: WebGateInput): boolean {
     ANCHOR_PHRASES.some((p) => ` ${norm} `.includes(` ${p} `)) ||
     ` ${norm} `.split(" ").some((w) => ANCHOR_PREFIXES.some((p) => !p.includes(" ") && forms(w).some((f) => f.startsWith(p)))) ||
     ANCHOR_PREFIXES.some((p) => p.includes(" ") && norm.includes(p));
-  if (!anchored) return false;
+  if (!anchored && !HISTORY_PATTERNS.some((r) => r.test(norm))) return false;
   if (words.some((w) => PERSONAL.has(w))) return false;
   for (const w of words) for (const f of forms(w)) for (const frag of BLOCK_FRAGMENTS) if (frag.length <= 3 ? f === frag : f.startsWith(frag)) return false; // short fragments must match the whole word (ربا ≠ رباح)
   return true;

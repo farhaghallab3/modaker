@@ -332,6 +332,10 @@ test("off by default; model defaults to gpt-5-mini; the allow-list is the small 
 
 test("the web gate: ordinary factual questions pass; ruling-like, hadith, Quran, worship, personal and ambiguous ones fail closed", () => {
   const base = { level: "B" as const, intent: "general", injection: false, rulingRequest: false, explicitRefs: false, storyMode: false };
+  const widened = ["من أول من آمن من الرجال؟", "من أول من آمن من الصبيان؟", "من أول امرأة دخلت الإسلام؟", "من أول مؤذن؟", "من كان أول خليفة؟", "من صاحب النبي في الهجرة؟", "من نام في فراش النبي ليلة الهجرة؟", "من أول شهيد في الإسلام؟", "من أول من أسلم؟"];
+  for (const q of widened) assert.equal(webFallbackEligible({ ...base, question: q }), true, q);
+  const unrelated = ["من أول رئيس لمصر؟", "من أفضل لاعب كرة؟", "من اخترع الهاتف؟", "من أول من صعد القمر؟", "من أول من آمن بالفكرة في الشركة؟", "هل مسموح أفطر؟", "ما حكم كذا؟", "من هو رئيس الوزراء؟", "من أول من اخترع الكتابة؟"];
+  for (const q of unrelated) assert.equal(webFallbackEligible({ ...base, question: q }), false, q);
   const ok = ["من أول امرأة دخلت الإسلام؟", "من هو أبو بكر الصديق؟", "متى كانت غزوة بدر؟", "من هو بلال بن رباح؟", "من هو علي بن أبي طالب؟", "ما معنى كلمة الخلافة؟"];
   for (const q of ok) assert.equal(webFallbackEligible({ ...base, question: q }), true, q);
   const blocked = [
