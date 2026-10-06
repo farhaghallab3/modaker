@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AssistantSheet } from "@/components/assistant/AssistantLauncher";
 import { AudioPlayer } from "@/components/quran/AudioPlayer";
 import { SourceLine } from "@/components/quran/QuranVerse";
 import { useAyahAudio } from "@/components/quran/useAyahAudio";
@@ -169,6 +170,7 @@ function ReciteSession({
   const [saved, setSaved] = useState(false);
   const [hints, setHints] = useState(false);
   const [listen, setListen] = useState(false);
+  const [askAyah, setAskAyah] = useState<number | null>(null);
   const lastTranscript = useRef<Transcript | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
   const versesRef = useRef(verses);
@@ -271,9 +273,14 @@ function ReciteSession({
                 {clamped ? <p className="mt-1 text-xs text-sand-700">عدّلنا المقطع ليبقى ضمن حدود السورة و٣٠ آية في الجلسة.</p> : null}
               </div>
               {!recording ? (
-                <Link href="/recite" className="text-sm text-olive hover:text-forest underline-offset-4 hover:underline shrink-0">
-                  تغيير المقطع
-                </Link>
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <Link href="/recite" className="text-sm text-olive hover:text-forest underline-offset-4 hover:underline">
+                    تغيير المقطع
+                  </Link>
+                  <button type="button" onClick={() => setAskAyah(range.from)} className="inline-flex items-center gap-1.5 text-sm text-olive hover:text-forest underline-offset-4 hover:underline">
+                    <Icon name="lamp" size={14} /> اسأل مُدّكِر
+                  </button>
+                </div>
               ) : null}
             </section>
 
@@ -428,6 +435,14 @@ function ReciteSession({
           </div>
         ) : null}
       </div>
+
+      <AssistantSheet
+        open={askAyah !== null}
+        onClose={() => setAskAyah(null)}
+        context={askAyah !== null ? { surah: meta.number, ayah: askAyah } : undefined}
+        ayahRange={{ from: range.from, to: range.to }}
+        onAyahChange={setAskAyah}
+      />
 
       {stage === "feedback" && analysis ? (
         <FocusActionBar label="إجراءات النتيجة">

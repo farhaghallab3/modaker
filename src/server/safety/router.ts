@@ -24,6 +24,7 @@ export type Intent =
   | "quiz"
   | "explain"
   | "story"
+  | "asbab"
   | "word-meaning"
   | "general"
   | "hadith-request"
@@ -277,6 +278,7 @@ export function routeDeterministic(question: string, opts: RouteOptions = {}): R
   else if (L.QURAN_TEXT.test(nq)) intent = "quran-text";
   else if (L.QUIZ.test(nq)) intent = "quiz";
   else if ((L.OFF_TOPIC.test(nq) || L.OFF_TOPIC.test(raw)) && !religious) intent = "off-topic";
+  else if (L.ASBAB.test(nq)) intent = "asbab";
   else if (L.WORD_MEANING.test(nq)) intent = "word-meaning";
   else if (L.STORY.test(nq)) intent = "story";
   else if (L.EXPLAIN.test(nq)) intent = "explain";

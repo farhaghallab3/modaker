@@ -335,6 +335,8 @@ export type AnswerType =
 export type AbstainReason =
   | "no_evidence"
   | "no_hadith_source"
+  /** Asbab al-nuzul asked but no approved asbab source is loaded. */
+  | "no_asbab_source"
   /** A general fiqh question was recognised but no approved fiqh source is loaded (knowledge gap). */
   | "no_fiqh_source"
   | "language_unsupported"

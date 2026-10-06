@@ -35,7 +35,7 @@ import { buildUserMessage, INSUFFICIENT_SENTINEL, passageLabel, SYSTEM_PROMPT } 
 import { buildQuiz } from "./quiz";
 import { parseReferences, rangeSize, type ParsedReferences, type ReferenceContext } from "./references";
 import { ayahRefLabel, quranComUrl, TafsirRetriever, type Passage, type Retriever } from "./retriever";
-import { getSource, isApproved } from "./sources";
+import { getSource, hasApprovedAsbabSource, isApproved } from "./sources";
 
 export interface AskInput {
   question: string;
@@ -237,6 +237,7 @@ export function createAssistant(deps: AssistantDeps) {
         no_evidence: TEMPLATES.abstain.text,
         no_fiqh_source: TEMPLATES.fiqhNoMaterial.text,
         no_hadith_source: `${TEMPLATES.abstain.text} ${TEMPLATES.noHadithSource.text}`,
+        no_asbab_source: TEMPLATES.noAsbabSource.text,
         language_unsupported: TEMPLATES.language.text,
         unverified_generation: TEMPLATES.abstain.text,
         needs_clarification: TEMPLATES.quoteClarify.text,
@@ -285,6 +286,22 @@ export function createAssistant(deps: AssistantDeps) {
           citations,
           blocks: [...preBlocks, ...found],
         });
+      }
+
+      // ── asbab al-nuzul: only from an approved asbab source — never tafsir presented as a reason of revelation ──
+      if (decision.intent === "asbab" && !hasApprovedAsbabSource()) {
+        let attach: Ayah[] | undefined;
+        let quranBlocks: AnswerBlock[] = [];
+        try {
+          if (refs.ranges.length && rangeSize(refs.ranges) <= ATTACH_VERSES_MAX) {
+            attach = await loadVerses(deps.quran, refs.ranges, ATTACH_VERSES_MAX);
+            const source = (await deps.quran.getSurah(refs.ranges[0].surah)).source;
+            if (attach.length) quranBlocks = [{ type: "quran", verses: attach, source }];
+          }
+        } catch {
+          attach = undefined;
+        }
+        return abstain("no_asbab_source", { provider: "guard:asbab", verses: attach, blocks: quranBlocks });
       }
 
       // ── deterministic Quran intents (Level A) ───────────────────────────
@@ -387,7 +404,8 @@ export function createAssistant(deps: AssistantDeps) {
       let citations: Citation[] = [];
       let verses: Ayah[] | undefined;
       const blocks: AnswerBlock[] = [...preBlocks, { type: "referral", text: TEMPLATES.referralD.text, templateId: TEMPLATES.referralD.id, templateVersion: TEMPLATES.referralD.version }];
-      if (refs.ranges.length) {
+      // (an ayah that only came from the screen the learner is on is NOT a reference made in the question)
+      if (refs.ranges.length && !refs.fromContext) {
         try {
           const tafsir = new TafsirRetriever(deps.quran, deps.tafsir ?? "muyassar", ATTACH_VERSES_MAX);
           const passages = (await tafsir.retrieve("", { refs, limit: 3 })).slice(0, 3);
@@ -464,6 +482,9 @@ export function createAssistant(deps: AssistantDeps) {
     }
 
     async function groundedAnswer(r: ParsedReferences, d: RouteDecision, pre: string[], preB: AnswerBlock[]): Promise<AssistantResult> {
+      // A disputed / sensitive (Level C) question must not be answered with the tafsir of whatever ayah the learner
+      // happens to be viewing: an ayah that only came from the screen is not a reference made in the question.
+      if (d.level === "C" && r.fromContext) r = { ...r, surahs: [], ranges: [], fromContext: false };
       const passages = await deps.retriever.retrieve(d.cleanedQuestion || q, { refs: r, limit: PASSAGE_LIMIT });
       meta.passages = passages.length;
 
@@ -509,9 +530,9 @@ export function createAssistant(deps: AssistantDeps) {
       const { content, used } = buildUserMessage(d.cleanedQuestion || q, passages, d.intent as Intent);
       const raw = await llm.complete({ system: SYSTEM_PROMPT, messages: [{ role: "user", content }], maxTokens: 700, temperature: 0.2 });
 
-      const consulted = used.slice(0, EXTRACTIVE_TOP);
       if (!raw || raw.includes(INSUFFICIENT_SENTINEL)) {
-        return abstain("no_evidence", { provider: llm.id, citations: consulted.map(passageCitation), verses: attach });
+        // The passages did not answer the question: show no citation and no verses, as nothing was supported by them.
+        return abstain("no_evidence", { provider: llm.id });
       }
 
       const verified = verifyGeneratedAnswer(

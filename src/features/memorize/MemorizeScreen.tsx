@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { AssistantSheet } from "@/components/assistant/AssistantLauncher";
 import { AudioPlayer } from "@/components/quran/AudioPlayer";
 import { QuranVerse, SourceLine } from "@/components/quran/QuranVerse";
 import { TafsirNote } from "@/components/quran/TafsirNote";
@@ -84,6 +85,8 @@ function MemorizeSession({ meta }: { meta: SurahMeta }) {
   const [hidden, setHidden] = useState(false);
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [meaning, setMeaning] = useState(false);
+  // the ayah the learner is asking about (opens the assistant with this exact ayah as context)
+  const [askAyah, setAskAyah] = useState<number | null>(null);
   const tafsir = useTafsir(n, meaning);
   useEffect(() => setRevealed(new Set()), [from, to]);
   const nextHidden = ayahs.find((a) => !revealed.has(a.ayah));
@@ -236,13 +239,14 @@ function MemorizeSession({ meta }: { meta: SurahMeta }) {
                               />
                             )}
                             {!isHidden ? (
-                              <div className="mt-1 flex justify-center">
+                              <div className="mt-1 flex justify-center gap-1">
                                 <IconButton
                                   icon={isPlaying ? "pause" : "volume"}
                                   label={isPlaying ? "إيقاف مؤقت" : `استمع للآية ${toArabicDigits(a.ayah)}`}
                                   onClick={() => (isPlaying ? audio.pause() : audio.playOne(i))}
                                   size={36}
                                 />
+                                <IconButton icon="lamp" label={`اسأل مُدّكِر عن الآية ${toArabicDigits(a.ayah)}`} onClick={() => setAskAyah(a.ayah)} size={36} />
                               </div>
                             ) : null}
                           </div>
@@ -293,6 +297,14 @@ function MemorizeSession({ meta }: { meta: SurahMeta }) {
           </ButtonLink>
         </FocusActionBar>
       ) : null}
+
+      <AssistantSheet
+        open={askAyah !== null}
+        onClose={() => setAskAyah(null)}
+        context={askAyah !== null ? { surah: n, ayah: askAyah } : undefined}
+        ayahRange={{ from, to }}
+        onAyahChange={setAskAyah}
+      />
     </div>
   );
 }

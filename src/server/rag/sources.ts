@@ -319,6 +319,11 @@ export function isApproved(id: string): boolean {
   return !!s && isSourceUsable(s);
 }
 
+/** Is there an approved, published source of asbab al-nuzul? (None yet: the question is abstained, never answered from tafsir.) */
+export function hasApprovedAsbabSource(): boolean {
+  return Object.values(KNOWLEDGE_SOURCES).some((s) => s.kind === "asbab" && isSourceUsable(s));
+}
+
 export function approvedSourceIds(): string[] {
   return Object.values(KNOWLEDGE_SOURCES)
     .filter(isSourceUsable)

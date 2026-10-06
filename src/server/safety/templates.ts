@@ -19,7 +19,7 @@ export interface Template {
 }
 
 /** Identifies the current set of fixed wording; bump together with any template change. */
-export const TEMPLATE_SET_VERSION = "2026-10-06.1";
+export const TEMPLATE_SET_VERSION = "2026-10-07.1";
 
 const t = (id: string, text: string, approval: TemplateApproval, version = 1): Template => ({ id, version, text, approval });
 
@@ -56,6 +56,13 @@ export const TEMPLATES = {
   noHadithSource: t(
     "hadith.nosource",
     "لا أنقل حديثًا من الذاكرة، ولا أنسب نصًا أو راويًا أو درجة أو مرجعًا إلا من مصدر حديثي معتمد، ولا يتوفر لدي مثل هذا المصدر حاليًا.",
+    "pending_scholarly_review",
+  ),
+
+  /** Asbab al-nuzul asked, but no approved asbab source is loaded: say so, never repackage tafsir as a reason of revelation. */
+  noAsbabSource: t(
+    "asbab.nosource",
+    "لا يتوفر لدي حاليًا مصدر معتمد لأسباب النزول، فلا أستطيع الجزم بسبب نزول هذه الآية أو متى نزلت. يمكنني أن أشرح لك معناها من التفسير الميسر، أو تراجع كتب أسباب النزول المعتمدة وأهل العلم.",
     "pending_scholarly_review",
   ),
 
