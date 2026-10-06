@@ -199,16 +199,12 @@ test("personal rulings and off-topic questions never reach the web answerer", as
   assert.equal(web.calls, 0);
 });
 
-test("the web answerer is only a FALLBACK after the approved sources found nothing — and attaches no unrelated ayah from the screen", async () => {
+test("fiqh questions never reach the web answerer (the general fallback is for ordinary factual questions only)", async () => {
   const web = new FakeWeb();
   const a = await makeWithWeb(web).answer({ question: "ما حكم لمس المصحف بدون وضوء؟", context: ctx });
-  assert.equal(web.calls, 1);
-  assert.equal(a.provider, "anthropic-web:fake");
-  assert.ok(a.citations.every((c) => c.sourceId !== "tafsir:muyassar" && !/١٢/.test(c.ref)), "no citation of the ayah on screen");
-  assert.equal(a.verses, undefined);
-  // without the web answerer the same question is the plain fiqh-gap abstention
-  const plain = await make().answer({ question: "ما حكم لمس المصحف بدون وضوء؟", context: ctx });
-  assert.equal(plain.abstainReason, "no_fiqh_source");
+  assert.equal(web.calls, 0);
+  assert.equal(a.abstainReason, "no_fiqh_source");
+  assert.equal(a.citations.length, 0);
 });
 
 // ── «هذه الآية» with a surah-only context (the global pill / assistant screen) ─────────────────────

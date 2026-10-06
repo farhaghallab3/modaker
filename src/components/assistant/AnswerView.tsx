@@ -114,7 +114,7 @@ export function AnswerView({
   const [revealed, setRevealed] = useState(false);
   const sources = (
     <SourceList
-      items={answer.citations}
+      items={answer.citations.map((c) => (c.sourceId.startsWith("web:") ? { ...c, publisher: "مصدر من الإنترنت" } : c))}
       idPrefix={`${idPrefix}-src`}
       title={answer.kind === "insufficient" ? "ما اطّلعتُ عليه من المصادر" : answer.kind === "needs-scholar" ? "مصادر ذات صلة" : "المصادر"}
       className="pt-1"

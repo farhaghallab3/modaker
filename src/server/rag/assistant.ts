@@ -37,11 +37,14 @@ import { findReferences, parseReferences, rangeSize, type ParsedReferences, type
 import { ayahRefLabel, quranComUrl, TafsirRetriever, type Passage, type Retriever } from "./retriever";
 import { getSource, hasApprovedAsbabSource, isApproved } from "./sources";
 import { resolveStoryRanges, spreadRanges } from "./story-ranges";
+import { webFallbackEligible } from "../safety/web-gate";
 import type { WebAnswerer } from "./web-answer";
 
 export interface AskInput {
   question: string;
   context?: ReferenceContext;
+  /** Per-user / per-IP key for the web-fallback budget (cost protection). */
+  clientKey?: string;
 }
 
 export interface AssistantDeps {
@@ -57,7 +60,7 @@ export interface AssistantDeps {
   /** Lazy provider of the verified-Quran quotation index. Omit to skip quotation checks. */
   quoteIndex?: () => Promise<QuranQuoteIndex>;
   hadith?: HadithProvider;
-  /** Web-grounded answers from trusted Islamic sites (null/absent → retrieval only). */
+  /** Trusted-web fallback for ordinary Islamic factual questions (null/absent → local sources only). */
   web?: WebAnswerer | null;
 }
 
@@ -288,7 +291,7 @@ export function createAssistant(deps: AssistantDeps) {
 
       // ── hadith: never from memory ───────────────────────────────────────
       if (decision.intent === "hadith-request") {
-        if (!hadith.available) return (await webAnswer()) ?? abstain("no_hadith_source", { provider: "hadith:none" });
+        if (!hadith.available) return abstain("no_hadith_source", { provider: "hadith:none" });
         const found = await hadith.find(decision.cleanedQuestion);
         if (!found.length) return abstain("no_hadith_source", { provider: `hadith:${hadith.id}` });
         const citations: Citation[] = found.map((h) => ({ sourceId: h.sourceId, title: h.reference, ref: h.reference, excerpt: truncate(h.text, 240), sourceKind: "hadith" }));
@@ -364,11 +367,24 @@ export function createAssistant(deps: AssistantDeps) {
       // ── grounded path (Level B, or C): approved sources are authoritative ──
       const grounded = await groundedAnswer(refs, decision, preTexts, preBlocks);
       if (!correction) {
-        // Optional web-grounded answer (only when explicitly configured: provider key + ASSISTANT_WEB_SEARCH=on):
-        // a FALLBACK used only when the approved sources found nothing — never in place of them.
-        if (grounded.abstained && (grounded.abstainReason === "no_evidence" || grounded.abstainReason === "no_fiqh_source")) {
-          const web = await webAnswer();
-          if (web) return web;
+        // Optional trusted-web fallback (explicit opt-in). Used ONLY when the approved local sources found nothing AND the
+        // question is an ordinary Level B factual one (see web-gate.ts) — never in place of local evidence, never for
+        // Quran/tafsir, hadith, fiqh, personal, asbab or off-topic questions.
+        if (grounded.abstained && grounded.abstainReason === "no_evidence" && deps.web) {
+          const explicitRefs = !refs.fromContext && (refs.ranges.length > 0 || refs.surahs.length > 0);
+          const eligible = webFallbackEligible({
+            question: q,
+            level: decision.level,
+            intent: decision.intent,
+            injection: Boolean(decision.flags.injection),
+            rulingRequest: decision.flags.rulingRequest,
+            explicitRefs,
+            storyMode,
+          });
+          if (eligible) {
+            const web = await webAnswer();
+            if (web) return web;
+          }
         }
         return grounded;
       }
@@ -400,15 +416,14 @@ export function createAssistant(deps: AssistantDeps) {
     // ── flows ─────────────────────────────────────────────────────────────
 
     /**
-     * Answer from trusted Islamic websites. null → not available or nothing reliable found, so the
-     * caller continues with its usual path. Never used for injection attempts.
+     * Answer an ordinary factual question from the allow-listed trusted sites. null → nothing reliable found / failed / over budget,
+     * so the caller keeps its abstention. Every shown answer carries allow-listed citations (enforced in web-answer.ts).
      */
     async function webAnswer(): Promise<AssistantResult | null> {
-      if (!deps.web || decision.flags.injection) return null;
-      const sensitive = decision.level === "C";
+      if (!deps.web) return null;
       let res;
       try {
-        res = await deps.web.answer(decision.cleanedQuestion || q, { sensitive });
+        res = await deps.web.answer(decision.cleanedQuestion || q);
       } catch (e) {
         console.warn("[assistant] web answer failed:", (e as Error).message);
         return null;
@@ -416,46 +431,13 @@ export function createAssistant(deps: AssistantDeps) {
       if (res.status === "out_of_scope") return abstain("out_of_scope", { provider: deps.web.id });
       if (res.status === "needs_scholar") return referral();
       if (res.status !== "answered") return null;
-
-      // Verses the answer refers to are shown from the verified Mushaf, never from the model.
-      const cited = parseReferences(res.text);
-      // an ayah that only came from the screen is not a reference made in the question
-      const ranges = cited.ranges.length ? cited.ranges : refs.fromContext ? [] : refs.ranges;
-      let verses: Ayah[] | undefined;
-      const citations = [...res.citations];
-      const quranBlocks: AnswerBlock[] = [];
-      if (ranges.length && rangeSize(ranges) <= ATTACH_VERSES_MAX) {
-        try {
-          verses = await loadVerses(deps.quran, ranges, ATTACH_VERSES_MAX);
-          if (verses.length) {
-            const source = (await deps.quran.getSurah(verses[0].surah)).source;
-            quranBlocks.push({ type: "quran", verses, source });
-            citations.push(quranCitation(source, groupRanges(verses)));
-          }
-        } catch {
-          verses = undefined; // the answer stands on its own sources
-        }
-      }
-      const preface: AnswerBlock[] = sensitive
-        ? [{ type: "warning", text: TEMPLATES.sensitiveC.text, code: "sensitive", templateId: TEMPLATES.sensitiveC.id, templateVersion: TEMPLATES.sensitiveC.version }]
-        : [];
-      const note: AnswerBlock[] = sensitive
-        ? [{ type: "warning", text: TEMPLATES.consultScholar.text, code: "sensitive", templateId: TEMPLATES.consultScholar.id, templateVersion: TEMPLATES.consultScholar.version }]
-        : [];
       return finish({
-        type: sensitive ? "sensitive_sourced" : "sourced_explanation",
-        text: compose(sensitive ? TEMPLATES.sensitiveC.text : undefined, res.text, sensitive ? TEMPLATES.consultScholar.text : undefined),
-        provider: res.model ? `anthropic-web:${res.model}` : deps.web.id,
-        citations,
-        verses,
+        type: "sourced_explanation",
+        text: compose(res.text),
+        provider: deps.web.id,
+        citations: res.citations,
         generationUsed: true,
-        blocks: [
-          ...preBlocks,
-          ...preface,
-          { type: "explanation", text: res.text, origin: "generated", citations: res.citations.map((_, i) => i + 1) },
-          ...note,
-          ...quranBlocks,
-        ],
+        blocks: [...preBlocks, { type: "explanation", text: res.text, origin: "generated", citations: res.citations.map((_, k) => k + 1) }],
       });
     }
 
@@ -706,11 +688,15 @@ export async function answerQuestion(input: AskInput): Promise<AssistantAnswer> 
   const parts: Retriever[] = [new retrievers.TafsirRetriever(quran, "muyassar")];
   const embedder = getEmbeddingProvider();
   if (hasDatabase() && embedder) parts.push(new retrievers.PgVectorRetriever(embedder));
-  const { ClaudeWebAnswerer, DEFAULT_TRUSTED_DOMAINS } = await import("./web-answer");
+  const { OpenAiWebAnswerer, BudgetedWebAnswerer, DEFAULT_TRUSTED_DOMAINS } = await import("./web-answer");
   const domains = env.assistantTrustedDomains();
   const web =
-    env.assistantWebSearch() && env.anthropicApiKey()
-      ? new ClaudeWebAnswerer(env.anthropicApiKey(), env.assistantWebModel(), domains.length ? domains : DEFAULT_TRUSTED_DOMAINS)
+    env.assistantWebSearch() && env.openaiApiKey()
+      ? new BudgetedWebAnswerer(
+          new OpenAiWebAnswerer(env.openaiApiKey(), env.assistantWebModel(), domains.length ? domains : DEFAULT_TRUSTED_DOMAINS),
+          input.clientKey ?? "anon",
+          env.assistantWebDailyCap(),
+        )
       : null;
   const assistant = createAssistant({
     quran,

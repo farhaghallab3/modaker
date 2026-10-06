@@ -60,11 +60,15 @@ export const env = {
   /** Development-only raw STT benchmark (page + API). Off unless explicitly on; the API also refuses non-local hosts. */
   sttBenchmark: () => str("STT_BENCHMARK", "off").toLowerCase() === "on",
   /**
-   * Web-grounded answers (Claude + web search restricted to trusted Islamic sites).
-   * Explicit opt-in: needs ANTHROPIC_API_KEY AND ASSISTANT_WEB_SEARCH=on; off otherwise. Used only as a fallback after the approved sources found nothing.
+   * Trusted-web fallback for ordinary Islamic FACTUAL questions (OpenAI Responses `web_search`, restricted to a reviewed domain allow-list).
+   * Explicit opt-in: needs OPENAI_API_KEY AND ASSISTANT_WEB_SEARCH=on; off otherwise. Used only after the approved local sources found
+   * nothing and the safety router + web gate allowed it (never Quran/tafsir, hadith, fiqh, personal, asbab or off-topic questions).
    */
   assistantWebSearch: () => str("ASSISTANT_WEB_SEARCH", "off").toLowerCase() === "on",
-  assistantWebModel: () => str("ASSISTANT_WEB_MODEL", "claude-opus-5-5"),
+  /** The domain filter is only supported by the gpt-5 family (not gpt-4o / gpt-4.1). */
+  assistantWebModel: () => str("ASSISTANT_WEB_MODEL", "gpt-5-mini"),
+  /** Daily cap on web-fallback calls per server instance (cost protection); a minimum of 1 applies. */
+  assistantWebDailyCap: () => int("ASSISTANT_WEB_DAILY_CAP", 150),
   /** Comma-separated allow-list; empty → DEFAULT_TRUSTED_DOMAINS in src/server/rag/web-answer.ts. */
   assistantTrustedDomains: () =>
     str("ASSISTANT_TRUSTED_DOMAINS")
