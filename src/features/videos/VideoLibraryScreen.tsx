@@ -8,12 +8,14 @@ import { VideoCard } from "@/components/stories/VideoCard";
 import { YouTubeEmbed } from "@/components/stories/YouTubeEmbed";
 import { Icon } from "@/components/ui/Icon";
 import { Badge, Button, EmptyState } from "@/components/ui/primitives";
-import { getStory, STORIES } from "@/content/stories";
-import { VIDEOS } from "@/content/videos";
+import { getStory, visibleStories } from "@/content/stories";
+import { visibleVideos } from "@/content/videos";
 import { needsDemoNotice } from "@/lib/content-state";
 import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import { FilterChips } from "@/features/shared/FilterChips";
 
+const VIDEOS = visibleVideos();
+const STORIES = visibleStories();
 const SURAHS_WITH_VIDEOS = [...new Set(VIDEOS.map((v) => v.surah).filter((n): n is number => !!n))].sort((a, b) => a - b);
 
 /** Filters and the selected video live in the URL (?surah=&story=&v=) so links are shareable. */
@@ -69,7 +71,6 @@ export function VideoLibraryScreen() {
           <div className="lg:pt-2">
             <div className="flex flex-wrap gap-2">
               {selectedSurah ? <Badge>سورة {selectedSurah.nameAr}</Badge> : null}
-              {needsDemoNotice(selected) ? <Badge tone="muted">تجريبي</Badge> : null}
             </div>
             <h2 className="mt-3 font-display text-2xl sm:text-3xl leading-snug text-forest">{selected.title}</h2>
             <p className="mt-1 text-sm text-muted">
@@ -134,8 +135,8 @@ export function VideoLibraryScreen() {
       ) : (
         <EmptyState
           icon="video"
-          title="لا مقاطع بهذا التصنيف بعد"
-          body="يضيف فريق المحتوى المقاطع بعد مراجعتها. جرّب تصنيفًا آخر."
+          title={VIDEOS.length ? "لا مقاطع بهذا التصنيف بعد" : "المقاطع قيد المراجعة"}
+          body={VIDEOS.length ? "يضيف فريق المحتوى المقاطع بعد مراجعتها. جرّب تصنيفًا آخر." : "يضيف فريق المحتوى المقاطع بعد مراجعتها."}
           action={
             <Button variant="ghost" size="sm" onClick={() => setParams({ surah: null, story: null, v: null })}>
               عرض كل المقاطع

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/primitives";
 import { useApp } from "@/lib/store/AppProvider";
-import { AuthHeading, DemoLink, EMAIL_RE, FormError, PasswordField, TextField } from "./AuthParts";
+import { AuthHeading, EMAIL_RE, FormError, PasswordField, TextField } from "./AuthParts";
 
 type Values = { email: string; password: string };
 type Errors = Partial<Record<keyof Values, string>>;
@@ -116,7 +116,6 @@ export function LoginScreen() {
         </Link>
       </p>
 
-      <DemoLink />
     </>
   );
 }

@@ -113,7 +113,6 @@ export function SettingsScreen() {
           {profile?.email ? (
             <p className="text-sm text-muted">
               البريد الإلكتروني: <span className="text-ink" dir="ltr">{profile.email}</span>
-              {state.demo ? <Badge tone="sand" className="ms-2">نسخة تجريبية</Badge> : null}
             </p>
           ) : null}
           <div>

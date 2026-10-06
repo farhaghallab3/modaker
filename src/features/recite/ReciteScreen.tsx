@@ -415,7 +415,7 @@ function ReciteSession({
                             موعد مراجعتك القادمة لهذا المقطع: <strong className="text-forest">{relativeDueLabel(nextReview)}</strong>.
                           </>
                         ) : null}{" "}
-                        {changesLearning ? "كلما أتقنت التسميع تباعدت المراجعات." : "لم يتغيّر تقدّمك لأن هذه المحاولة تجريبية أو لم نتأكد من كل الكلمات."}
+                        {changesLearning ? "كلما أتقنت التسميع تباعدت المراجعات." : "لم يتغيّر تقدّمك لأن هذه المحاولة لم تُحتسب أو لم نتأكد من كل الكلمات."}
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <ButtonLink href="/review" size="sm" variant="secondary" icon="review">

@@ -36,6 +36,7 @@ import { buildQuiz } from "./quiz";
 import { findReferences, parseReferences, rangeSize, type ParsedReferences, type ReferenceContext } from "./references";
 import { ayahRefLabel, quranComUrl, TafsirRetriever, type Passage, type Retriever } from "./retriever";
 import { getSource, hasApprovedAsbabSource, isApproved } from "./sources";
+import { resolveStoryRanges, spreadRanges } from "./story-ranges";
 import type { WebAnswerer } from "./web-answer";
 
 export interface AskInput {
@@ -190,6 +191,15 @@ export function createAssistant(deps: AssistantDeps) {
     decision = await applyClassifiers(decision, q, deps.classifiers);
     // References come from the ORIGINAL text: cleaning for routing normalises away "1-3" and "19:32".
     let refs = parseReferences(q, context);
+    // A Quranic story named in the question (and no explicit ayah): answer from the tafsir of its fixed Quran range.
+    let storyMode = false;
+    if (!refs.ranges.length && decision.level === "B") {
+      const story = resolveStoryRanges(q);
+      if (story) {
+        refs = { surahs: [story[0].surah], ranges: spreadRanges(story, PASSAGE_LIMIT + 4), fromContext: false };
+        storyMode = true;
+      }
+    }
     const meta = { decision, refs, passages: 0, issues: [] as VerifyIssue[] };
 
     const finish = (p: Parts): AssistantResult => {
@@ -560,11 +570,14 @@ export function createAssistant(deps: AssistantDeps) {
       if (d.level !== "C" && r.fromContext && !r.ranges.length && findReferences(q).deictic) {
         return finish({ type: "clarification", text: compose(TEMPLATES.ayahNeeded.text), provider: "guard:ayah-needed", abstain: "needs_clarification" });
       }
-      const passages = await deps.retriever.retrieve(d.cleanedQuestion || q, { refs: r, limit: PASSAGE_LIMIT });
+      // Whole-corpus search is for ordinary (Level B) questions only: fiqh (C) needs an approved fiqh source, not tafsir keywords.
+      const broad = d.level === "B" && (d.intent === "general" || d.intent === "explain" || d.intent === "word-meaning" || d.intent === "story");
+      const passages = await deps.retriever.retrieve(d.cleanedQuestion || q, { refs: r, limit: PASSAGE_LIMIT, broad });
       meta.passages = passages.length;
 
       const size = rangeSize(r.ranges);
-      const verses = r.ranges.length ? await loadVerses(deps.quran, r.ranges, Math.min(size, QURAN_TEXT_MAX)) : [];
+      // A story is told by its tafsir passages: sampled ayahs are not shown as "the verses of the answer".
+      const verses = r.ranges.length && !storyMode ? await loadVerses(deps.quran, r.ranges, Math.min(size, QURAN_TEXT_MAX)) : [];
       const attach = verses.length && size <= ATTACH_VERSES_MAX ? verses : undefined;
       const sourceOf = async () => (await deps.quran.getSurah(r.ranges[0].surah)).source;
       const quranBlock = async (): Promise<AnswerBlock[]> => (attach?.length ? [{ type: "quran", verses: attach, source: await sourceOf() }] : []);

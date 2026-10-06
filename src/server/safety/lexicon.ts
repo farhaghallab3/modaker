@@ -26,7 +26,7 @@ const en = (list: string[]) => new RegExp(`\\b(?:${list.map(esc).join("|")})\\b`
 /** The user asks for a ruling. Whether it is a PERSONAL case is decided separately. */
 export const RULING_FRAMING = phrases([
   "هل يجوز", "يجوز لي", "هل يحل", "ما حكم", "ماحكم", "حكم من", "هل علي", "هل يجب", "هل يلزم", "هل يسقط", "يسقط عني", "ما حكمي", "هل يصح", "هل تصح", "هل تبطل",
-  "هل يبطل", "هل يفسد", "هل افطر", "هل اثم", "حكم الشرع", "الحكم الشرعي", "شرعا",
+  "هل يبطل", "هل يفسد", "هل مسموح", "هل ممنوع", "هل مباح", "هل يباح", "هل يحرم", "هل يكره", "هل ينقض", "هل ينتقض", "هل افطر", "هل اثم", "حكم الشرع", "الحكم الشرعي", "شرعا",
 ]);
 /** Asking outright for a fatwa is always a Level D request. */
 export const EXPLICIT_FATWA = phrases(["افتني", "افتوني", "اريد فتوى", "فتوى", "فتوي", "استفتاء", "استفتي"]);

@@ -14,6 +14,7 @@
  * • Ranges must be contiguous, ascending and within the surah's ayah count —
  *   `validateStories()` below checks this and is cheap enough to run in tests.
  */
+import { isLearnerVisible } from "@/lib/content-state";
 import { getSurahMeta } from "@/lib/quran/surahs";
 import type { SourceRef, Story, StoryChapter } from "@/lib/types";
 
@@ -197,12 +198,17 @@ export const STORIES: Story[] = [
   },
 ];
 
+/** The stories a learner may see: reviewed + published only (see isLearnerVisible). */
+export function visibleStories(): Story[] {
+  return STORIES.filter(isLearnerVisible);
+}
+
 export function getStory(slug: string): Story | undefined {
-  return STORIES.find((s) => s.slug === slug);
+  return visibleStories().find((s) => s.slug === slug);
 }
 
 export function storiesForSurah(n: number): Story[] {
-  return STORIES.filter((s) => s.surahs.includes(n));
+  return visibleStories().filter((s) => s.surahs.includes(n));
 }
 
 /** Overall ayah span of a story (first chapter start → last chapter end). */

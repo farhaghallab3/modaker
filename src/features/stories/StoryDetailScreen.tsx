@@ -83,15 +83,10 @@ export function StoryDetailScreen() {
         </div>
       </header>
 
-      {needsDemoNotice(story) ? (
-        <p role="note" className="mb-10 flex items-start gap-2.5 rounded-2xl bg-sand-100/70 px-4 py-3 text-sm leading-6 text-sand-800">
-          <Icon name="info" size={18} className="mt-0.5 shrink-0" />
-          <span>
-            <strong className="font-semibold">{DEMO_CONTENT_LABEL}.</strong> المقدمة وملخصات الفصول ليست تفسيرًا؛ نص الآيات من
-            المصحف الموثّق والتفسير من التفسير الميسر.
-          </span>
-        </p>
-      ) : null}
+      <p role="note" className="mb-10 flex items-start gap-2.5 rounded-2xl bg-sand-100/70 px-4 py-3 text-sm leading-6 text-sand-800">
+        <Icon name="info" size={18} className="mt-0.5 shrink-0" />
+        <span>المقدمة وملخصات الفصول ليست تفسيرًا؛ نص الآيات من المصحف الموثّق والتفسير من التفسير الميسر.</span>
+      </p>
 
       <div className="grid gap-10 lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-14">
         {/* ── Timeline ──────────────────────────────────────────────── */}

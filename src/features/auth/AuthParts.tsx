@@ -86,26 +86,3 @@ export function FormError({ message }: { message: string | null }) {
     </div>
   );
 }
-
-/** "جرّب دون حساب" — loads the demo learner and opens the dashboard. */
-export function DemoLink() {
-  const { actions } = useApp();
-  const router = useRouter();
-  return (
-    <div className="mt-8 flex items-center gap-4 text-sm text-muted">
-      <span className="h-px flex-1 bg-line" />
-      <button
-        type="button"
-        onClick={() => {
-          actions.startDemo();
-          router.push("/dashboard");
-        }}
-        className="inline-flex items-center gap-1.5 rounded-lg px-1 text-forest underline-offset-4 hover:underline"
-      >
-        <Icon name="leaf" size={16} className="text-olive" />
-        جرّب دون حساب
-      </button>
-      <span className="h-px flex-1 bg-line" />
-    </div>
-  );
-}

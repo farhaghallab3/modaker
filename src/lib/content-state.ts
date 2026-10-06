@@ -32,6 +32,14 @@ export function isPubliclyVisible(c: ContentFlags): boolean {
   return c.reviewState === "published";
 }
 
+/**
+ * Learner-facing visibility: ONLY reviewed, published, non-demo content. Anything else stays hidden — the app
+ * never presents unreviewed material as trusted, and never relabels it as published to make it appear.
+ */
+export function isLearnerVisible(c: ContentFlags): boolean {
+  return !c.isDemo && c.reviewState === "published";
+}
+
 /** Must the UI show the "demo / not reviewed" notice for this item? */
 export function needsDemoNotice(c: ContentFlags): boolean {
   return c.isDemo || c.reviewState !== "published";

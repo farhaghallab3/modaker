@@ -25,7 +25,7 @@ export const ASSISTANT_SUGGESTIONS = [
 ] as const;
 
 /** AI disclosure (PDF: transparency) + the sourcing promise. Shown in the page and the side sheet. */
-export const ASSISTANT_DISCLAIMER = `${AI_DISCLOSURE} يذكر مُدّكِر مرجع كل إجابة.`;
+export const ASSISTANT_DISCLAIMER = `${AI_DISCLOSURE} يجيبك بعناية، ويعرض المصادر عند الحاجة.`;
 
 /** Suggestions when the learner is on a specific ayah: «هذه الآية» is resolved from the context chip. */
 export const AYAH_SUGGESTIONS = ["اشرح لي هذه الآية ببساطة", "ما معنى هذه الآية؟", "لماذا نزلت هذه الآية؟"] as const;
@@ -221,7 +221,14 @@ export function AIChat({
             {pending ? (
               <li className="flex gap-3 items-center" aria-busy="true">
                 <Seal searching />
-                <p className="text-sm text-muted">يبحث في المصادر الموثوقة…</p>
+                <p className="inline-flex items-center gap-1.5 text-sm text-muted" role="status">
+                  لحظة
+                  <span className="inline-flex gap-1" aria-hidden>
+                    <span className="size-1.5 rounded-full bg-olive animate-pulse" />
+                    <span className="size-1.5 rounded-full bg-olive animate-pulse [animation-delay:150ms]" />
+                    <span className="size-1.5 rounded-full bg-olive animate-pulse [animation-delay:300ms]" />
+                  </span>
+                </p>
               </li>
             ) : null}
           </ol>

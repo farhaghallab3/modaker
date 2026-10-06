@@ -37,6 +37,8 @@ export interface Passage {
 export interface RetrieveOptions {
   refs: ParsedReferences;
   limit: number;
+  /** Level B general Quran questions only: with no explicit surah/ayah, search the whole approved tafsir. */
+  broad?: boolean;
 }
 
 export interface Retriever {
@@ -93,6 +95,54 @@ export function keywordScore(terms: string[], text: string): number {
   return hits / terms.length;
 }
 
+// ── Whole-corpus tafsir index (built once per provider, in memory) ────────
+
+const BROAD_MIN_COVERAGE = 0.5;
+const BROAD_MAX_DF = 300;
+const BM25_K1 = 1.2;
+const BM25_B = 0.75;
+
+interface TafsirIndex {
+  entries: { e: TafsirEntry; tf: Map<string, number>; len: number }[];
+  /** term → number of entries containing it */
+  df: Map<string, number>;
+  avgLen: number;
+}
+const indexes = new WeakMap<QuranProvider, Map<string, Promise<TafsirIndex>>>();
+
+async function buildIndex(quran: QuranProvider, slug: TafsirSlug): Promise<TafsirIndex> {
+  const entries: TafsirIndex["entries"] = [];
+  const df = new Map<string, number>();
+  let totalLen = 0;
+  for (let from = 1; from <= 114; from += 12) {
+    const batch = await Promise.all(Array.from({ length: Math.min(12, 115 - from) }, (_, i) => quran.getTafsir(from + i, slug)));
+    for (const list of batch) {
+      for (const e of list) {
+        const tokens = tokenize(e.text).map(stem);
+        const tf = new Map<string, number>();
+        for (const t of tokens) tf.set(t, (tf.get(t) ?? 0) + 1);
+        entries.push({ e, tf, len: tokens.length });
+        totalLen += tokens.length;
+        for (const t of tf.keys()) df.set(t, (df.get(t) ?? 0) + 1);
+      }
+    }
+  }
+  return { entries, df, avgLen: entries.length ? totalLen / entries.length : 1 };
+}
+
+function tafsirIndex(quran: QuranProvider, slug: TafsirSlug): Promise<TafsirIndex> {
+  let per = indexes.get(quran);
+  if (!per) indexes.set(quran, (per = new Map()));
+  let p = per.get(slug);
+  if (!p) {
+    const built = buildIndex(quran, slug);
+    p = built;
+    per.set(slug, built);
+    built.catch(() => per!.delete(slug)); // a failed build is retried by the next question
+  }
+  return p;
+}
+
 // ── TafsirRetriever ──────────────────────────────────────────────────────
 
 export class TafsirRetriever implements Retriever {
@@ -106,13 +156,47 @@ export class TafsirRetriever implements Retriever {
     this.id = `tafsir:${slug}`;
   }
 
-  async retrieve(query: string, { refs, limit }: RetrieveOptions): Promise<Passage[]> {
+  async retrieve(query: string, { refs, limit, broad }: RetrieveOptions): Promise<Passage[]> {
     const sourceId = TAFSIR_SOURCE_IDS[this.slug];
     if (!isApproved(sourceId)) return [];
 
     if (refs.ranges.length) return this.forRanges(refs, sourceId);
-    if (refs.surahs.length) return this.forSurahs(query, refs, sourceId, limit);
+    // A surah that only came from the screen does not narrow a general question.
+    if (refs.surahs.length && !(broad && refs.fromContext)) return this.forSurahs(query, refs, sourceId, limit);
+    if (broad) return this.searchAll(query, sourceId, limit);
     return [];
+  }
+
+  /**
+   * Whole-corpus search over the approved tafsir (every entry, one per ayah). IDF-weighted term coverage:
+   * a passage must contain most of the question's distinctive words, so a vague or off-corpus question
+   * finds nothing (the caller then abstains) instead of returning the least-bad ayah.
+   */
+  private async searchAll(query: string, sourceId: string, limit: number): Promise<Passage[]> {
+    const terms = queryTerms(query);
+    if (!terms.length) return [];
+    const index = await tafsirIndex(this.quran, this.slug);
+    const idf = terms.map((t) => Math.log(1 + index.entries.length / Math.max(1, index.df.get(t) ?? 0)));
+    const total = idf.reduce((a, b) => a + b, 0);
+    // a question made only of very common words identifies nothing
+    const informative = terms.some((t) => (index.df.get(t) ?? 0) > 0 && (index.df.get(t) ?? 0) <= BROAD_MAX_DF);
+    if (!informative) return [];
+    const hits: { e: TafsirEntry; coverage: number; bm25: number }[] = [];
+    for (const row of index.entries) {
+      let got = 0;
+      let bm25 = 0;
+      terms.forEach((t, i) => {
+        const tf = row.tf.get(t) ?? 0;
+        if (!tf) return;
+        got += idf[i];
+        bm25 += (idf[i] * tf * (BM25_K1 + 1)) / (tf + BM25_K1 * (1 - BM25_B + (BM25_B * row.len) / index.avgLen));
+      });
+      const coverage = got / total;
+      if (coverage >= BROAD_MIN_COVERAGE) hits.push({ e: row.e, coverage, bm25 });
+    }
+    // Gate on term coverage (above); rank by BM25 so a passage that is ABOUT the topic beats one that mentions it in passing.
+    hits.sort((a, b) => b.bm25 - a.bm25);
+    return hits.slice(0, limit).map((h) => this.toPassage(h.e, sourceId, h.coverage));
   }
 
   private toPassage(e: TafsirEntry, sourceId: string, score: number): Passage {

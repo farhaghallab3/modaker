@@ -17,14 +17,11 @@ export function TextOnlyNote({ className }: { className?: string }) {
   );
 }
 
-/** Persistent Beta statement: automated checking can mishear; only confirmed differences are counted. */
+/** Persistent limitation notice: automated checking can mishear; only confirmed differences are counted. */
 export function BetaNote({ className }: { className?: string }) {
   return (
     <p className={cn("flex items-start gap-2 text-xs leading-6 text-ink/75", className)}>
-      <Badge tone="sand">تجريبي · Beta</Badge>
-      <span>
-        التحقق الآلي من التلاوة ميزة تجريبية وقد يُخطئ أحيانًا في سماع الكلمات. لا نحتسب عليك إلا ما نتأكد منه، وإذا لم نسمعك بوضوح نطلب منك الإعادة بدل الحكم عليك.
-      </span>
+      <span>قد يخطئ التحقق الآلي أحيانًا؛ راجع النتيجة عند الشك.</span>
     </p>
   );
 }

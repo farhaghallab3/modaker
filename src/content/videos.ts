@@ -24,6 +24,7 @@
  * Embeds always use youtube-nocookie.com behind a click-to-load facade, so no
  * request reaches YouTube until the learner presses play.
  */
+import { isLearnerVisible } from "@/lib/content-state";
 import type { Video } from "@/lib/types";
 
 export type CuratedVideo = Video & { thumbnail?: string };
@@ -218,16 +219,21 @@ export const VIDEOS: CuratedVideo[] = [
   },
 ];
 
+/** The videos a learner may see: reviewed + published only (see isLearnerVisible). */
+export function visibleVideos(): CuratedVideo[] {
+  return VIDEOS.filter(isLearnerVisible);
+}
+
 export function getVideo(id: string): CuratedVideo | undefined {
-  return VIDEOS.find((v) => v.id === id);
+  return visibleVideos().find((v) => v.id === id);
 }
 
 export function videosForStory(slug: string): CuratedVideo[] {
-  return VIDEOS.filter((v) => v.storySlug === slug);
+  return visibleVideos().filter((v) => v.storySlug === slug);
 }
 
 export function videosForSurah(n: number): CuratedVideo[] {
-  return VIDEOS.filter((v) => v.surah === n);
+  return visibleVideos().filter((v) => v.surah === n);
 }
 
 /** YouTube ids are exactly 11 chars of [A-Za-z0-9_-]. Anything else is treated as missing. */

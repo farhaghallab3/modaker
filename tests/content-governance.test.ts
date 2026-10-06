@@ -217,3 +217,28 @@ test("Level C wording is marked as pending scholarly review; owner-provided text
   assert.ok(templatesPendingReview().some((t) => t.id === TEMPLATES.sensitiveC.id));
   assert.equal(TEMPLATES.abstain.text, "لا تتوفر لدي مادة موثوقة كافية للإجابة عن هذا السؤال.");
 });
+
+// ── learner-facing visibility: unreviewed content is hidden, never relabelled ──
+import { isLearnerVisible } from "../src/lib/content-state";
+import { getStory, storiesForSurah, visibleStories } from "../src/content/stories";
+import { getVideo, videosForStory, videosForSurah, visibleVideos } from "../src/content/videos";
+
+test("learners see only reviewed, published, non-demo content", () => {
+  assert.equal(isLearnerVisible({ isDemo: false, reviewState: "published" }), true);
+  assert.equal(isLearnerVisible({ isDemo: true, reviewState: "published" }), false);
+  for (const s of REVIEW_STATES.filter((s) => s !== "published")) assert.equal(isLearnerVisible({ isDemo: false, reviewState: s }), false, s);
+});
+
+test("every story and video that is not reviewed stays hidden from the accessors the UI uses", () => {
+  assert.ok(visibleStories().every(isLearnerVisible));
+  assert.ok(visibleVideos().every(isLearnerVisible));
+  for (const s of STORIES.filter((s) => !isLearnerVisible(s))) {
+    assert.equal(getStory(s.slug), undefined, s.slug);
+    assert.ok(!storiesForSurah(s.surahs[0]).some((x) => x.slug === s.slug));
+    assert.ok(!videosForStory(s.slug).some((v) => !isLearnerVisible(v)));
+  }
+  for (const v of VIDEOS.filter((v) => !isLearnerVisible(v))) {
+    assert.equal(getVideo(v.id), undefined, v.id);
+    if (v.surah) assert.ok(!videosForSurah(v.surah).some((x) => x.id === v.id));
+  }
+});
