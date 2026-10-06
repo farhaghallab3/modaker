@@ -27,7 +27,8 @@
 import { isLearnerVisible } from "@/lib/content-state";
 import type { Video } from "@/lib/types";
 
-export type CuratedVideo = Video & { thumbnail?: string };
+/** `neutralCover`: show a neutral Modaker cover before playback instead of YouTube's own thumbnail (no request to i.ytimg.com). */
+export type CuratedVideo = Video & { thumbnail?: string; neutralCover?: boolean };
 
 const DEMO_CHANNEL = "قناة تعليمية (تجريبي)";
 
@@ -61,6 +62,8 @@ export const VIDEOS: CuratedVideo[] = [
   {
     id: "v-musa-khidr",
     youtubeId: "f7j-KVZ6mRw",
+    // YouTube's thumbnail for this video carries a teaser claim Modaker does not endorse: use the neutral cover until playback
+    neutralCover: true,
     title: "موسى والخضر — أدب طلب العلم",
     channel: "نفحات - Nafahat",
     description: "قصة مروية عن رحلة موسى عليه السلام مع الخضر ومواقفها الثلاثة.",
@@ -245,7 +248,8 @@ export function isValidYouTubeId(id: string | null | undefined): id is string {
   return !!id && /^[A-Za-z0-9_-]{11}$/.test(id);
 }
 
-export function videoThumbnail(v: Pick<CuratedVideo, "youtubeId" | "thumbnail">): string | null {
+export function videoThumbnail(v: Pick<CuratedVideo, "youtubeId" | "thumbnail" | "neutralCover">): string | null {
+  if (v.neutralCover) return null; // neutral Modaker cover (YouTube's thumbnail carries a teaser claim we do not present)
   if (v.thumbnail) return v.thumbnail;
   return isValidYouTubeId(v.youtubeId) ? `https://i.ytimg.com/vi/${v.youtubeId}/hqdefault.jpg` : null;
 }

@@ -67,7 +67,7 @@ export function VideoLibraryScreen() {
       {/* ── Player ──────────────────────────────────────────────────── */}
       {selected ? (
         <section ref={playerRef} aria-label="المقطع المختار" className="mb-12 grid gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:items-start scroll-mt-20">
-          <YouTubeEmbed youtubeId={selected.youtubeId} title={selected.title} thumbnail={selected.thumbnail} />
+          <YouTubeEmbed youtubeId={selected.youtubeId} title={selected.title} thumbnail={selected.thumbnail} neutralCover={selected.neutralCover} />
           <div className="lg:pt-2">
             <div className="flex flex-wrap gap-2">
               {selectedSurah ? <Badge>سورة {selectedSurah.nameAr}</Badge> : null}

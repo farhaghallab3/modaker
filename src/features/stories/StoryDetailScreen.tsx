@@ -148,7 +148,7 @@ export function StoryDetailScreen() {
           </h2>
           <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <div>
-              <YouTubeEmbed youtubeId={video.youtubeId} title={video.title} thumbnail={video.thumbnail} />
+              <YouTubeEmbed youtubeId={video.youtubeId} title={video.title} thumbnail={video.thumbnail} neutralCover={video.neutralCover} />
               <p className="mt-3 font-medium text-forest">{video.title}</p>
               <p className="text-sm text-muted leading-7">{video.description}</p>
             </div>

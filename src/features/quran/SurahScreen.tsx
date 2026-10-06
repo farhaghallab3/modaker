@@ -416,7 +416,7 @@ function VideosPanel({ videos }: { videos: CuratedVideo[] }) {
     <div className="space-y-5">
       {active ? (
         <div>
-          <YouTubeEmbed key={active.id} youtubeId={active.youtubeId} title={active.title} thumbnail={active.thumbnail} autoLoad={activeId !== videos[0]?.id} />
+          <YouTubeEmbed key={active.id} youtubeId={active.youtubeId} title={active.title} thumbnail={active.thumbnail} neutralCover={active.neutralCover} autoLoad={activeId !== videos[0]?.id} />
           <p className="mt-3 font-semibold text-forest">{active.title}</p>
           <p className="text-xs text-muted">{active.channel}</p>
         </div>

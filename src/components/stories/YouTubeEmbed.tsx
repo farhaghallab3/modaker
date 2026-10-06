@@ -16,12 +16,15 @@ export function YouTubeEmbed({
   youtubeId,
   title,
   thumbnail,
+  neutralCover = false,
   className,
   autoLoad = false,
 }: {
   youtubeId: string | null;
   title: string;
   thumbnail?: string;
+  /** Neutral Modaker cover instead of YouTube's thumbnail (nothing is requested from i.ytimg.com). */
+  neutralCover?: boolean;
   className?: string;
   /** Skip the facade (e.g. the learner already chose this video from a list). */
   autoLoad?: boolean;
@@ -53,14 +56,18 @@ export function YouTubeEmbed({
           className="group absolute inset-0 size-full text-start"
           aria-label={`تشغيل: ${title}`}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={thumbnail ?? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="absolute inset-0 size-full object-cover opacity-90 transition-opacity group-hover:opacity-100"
-          />
+          {neutralCover ? (
+            <span className="pattern-girih absolute inset-0 opacity-[0.12]" aria-hidden />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={thumbnail ?? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 size-full object-cover opacity-90 transition-opacity group-hover:opacity-100"
+            />
+          )}
           <span className="absolute inset-0 bg-gradient-to-t from-scrim/70 via-scrim/10 to-transparent" aria-hidden />
           <span className="absolute inset-0 grid place-items-center" aria-hidden>
             <span className="grid place-items-center size-16 sm:size-18 rounded-full bg-cream/95 text-forest shadow-[var(--shadow-lift)] transition-transform group-hover:scale-105">
