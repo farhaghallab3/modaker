@@ -24,6 +24,17 @@ export function gradeFromAccuracy(accuracy: number): number {
   return 0;
 }
 
+/** Local calendar day key (YYYY-MM-DD) — the unit of "one review event per day". Matches state.todayKey. */
+export function localDayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Has the learner already self-assessed this ayah today? */
+export function selfReviewedToday(p: Pick<AyahProgress, "selfReviews">, now: Date): boolean {
+  const last = p.selfReviews?.[p.selfReviews.length - 1];
+  return !!last && localDayKey(new Date(last.at)) === localDayKey(now);
+}
+
 export function newAyahProgress(surah: number, ayah: number, now = new Date()): AyahProgress {
   return {
     key: `${surah}:${ayah}`,
@@ -48,7 +59,12 @@ export function applyReview(
   now = new Date(),
 ): AyahProgress {
   const q = gradeFromAccuracy(outcome.accuracy);
-  let { ease, intervalDays, streak } = p;
+  // A recitation is validated evidence and always takes control: it supersedes any same-day self-review
+  // (selfBefore) and re-decides where the weakness comes from (weakBy).
+  const { selfBefore: _superseded, weakBy: _previousOrigin, ...rest } = p;
+  void _superseded;
+  void _previousOrigin;
+  let { ease, intervalDays, streak } = rest;
 
   ease = ease + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02));
   ease = Math.min(MAX_EASE, Math.max(MIN_EASE, ease));
@@ -62,19 +78,20 @@ export function applyReview(
     intervalDays = Math.min(intervalDays, 120);
   }
 
-  const accuracy = p.accuracy == null ? outcome.accuracy : p.accuracy * 0.6 + outcome.accuracy * 0.4;
+  const accuracy = rest.accuracy == null ? outcome.accuracy : rest.accuracy * 0.6 + outcome.accuracy * 0.4;
   const status: AyahProgress["status"] =
     q < 3 ? "weak" : streak >= 4 && accuracy >= 0.92 && intervalDays >= 14 ? "mastered" : "memorized";
 
   return {
-    ...p,
+    ...rest,
+    ...(q < 3 ? { weakBy: "recitation" as const } : {}),
     ease: Math.round(ease * 100) / 100,
     intervalDays,
     streak,
     status,
     accuracy: Math.round(accuracy * 1000) / 1000,
-    successCount: p.successCount + (q >= 3 ? 1 : 0),
-    mistakeCount: p.mistakeCount + outcome.mistakes,
+    successCount: rest.successCount + (q >= 3 ? 1 : 0),
+    mistakeCount: rest.mistakeCount + outcome.mistakes,
     lastReviewedAt: now.toISOString(),
     nextReviewAt: new Date(now.getTime() + intervalDays * DAY).toISOString(),
   };
@@ -87,11 +104,14 @@ function startOfDay(d: Date) {
 }
 
 function bucketFor(p: AyahProgress, now: Date): ReviewBucket {
-  // Weak = the latest recitation outcome was below passing (status is set by applyReview). It is
+  // Weak = the latest outcome was below passing (status is set by applyReview / a self-review). It is
   // NOT also derived from the blended rolling accuracy: one good recitation must clear it.
-  if (p.status === "weak") return "weak";
   const due = p.nextReviewAt ? new Date(p.nextReviewAt) : now;
-  if (due.getTime() <= startOfDay(now).getTime() + DAY) return "today";
+  const dueToday = due.getTime() <= startOfDay(now).getTime() + DAY;
+  // A weak ayah the learner has ALREADY self-assessed today is not due again today (it stays weak, and
+  // keeps counting under "needs attention", until a valid recitation clears it).
+  if (p.status === "weak" && !(selfReviewedToday(p, now) && !dueToday)) return "weak";
+  if (dueToday) return "today";
   if (p.status === "mastered") return "mastered";
   return "upcoming";
 }

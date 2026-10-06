@@ -25,6 +25,10 @@ export function ReviewScreen() {
   const now = useMemo(() => new Date(), []);
   const queue = useMemo(() => reviewQueue(state, now), [state, now]);
   const [expanded, setExpanded] = useState<Partial<Record<ReviewBucket, boolean>>>({});
+  // Reviews the learner just assessed: their card leaves the due list, so keep what they should read.
+  const [justReviewed, setJustReviewed] = useState<{ item: ReviewItem; message: string }[]>([]);
+  const onSelfReviewed = (item: ReviewItem, message: string) =>
+    setJustReviewed((list) => [...list.filter((x) => !(x.item.surah === item.surah && x.item.from === item.from && x.item.to === item.to)), { item, message }]);
 
   const byBucket = useMemo(() => {
     const m: Record<ReviewBucket, ReviewItem[]> = { today: [], weak: [], mastered: [], upcoming: [] };
@@ -127,6 +131,19 @@ export function ReviewScreen() {
         </section>
       )}
 
+      {justReviewed.length ? (
+        <section aria-label="راجعتها الآن" className="mb-10 space-y-2">
+          {justReviewed.map(({ item, message }) => (
+            <p key={`${item.surah}:${item.from}-${item.to}`} role="status" className="rounded-[var(--radius-card)] bg-olive-100/60 px-4 py-3 text-sm leading-7 text-ink/85">
+              <strong className="text-forest">
+                سورة {getSurahMeta(item.surah)?.nameAr} · {rangeLabel(item.from, item.to)}:
+              </strong>{" "}
+              {message}
+            </p>
+          ))}
+        </section>
+      ) : null}
+
       <div className="space-y-10">
         {SECTIONS.map((sec) => {
           const items = byBucket[sec.bucket];
@@ -148,7 +165,7 @@ export function ReviewScreen() {
               <ul className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {shown.map((item) => (
                   <li key={`${item.surah}:${item.from}-${item.to}`}>
-                    <ReviewCard item={item} now={now} className="h-full" />
+                    <ReviewCard item={item} now={now} className="h-full" onSelfReviewed={onSelfReviewed} />
                   </li>
                 ))}
               </ul>

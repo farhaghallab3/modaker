@@ -103,6 +103,38 @@ export interface AyahProgress {
    * "weak" / "mastered": each entry names the saved recitation (`recId`) that produced it.
    */
   recent?: { at: string; accuracy: number; mistakes: number; recId?: string }[];
+
+  // ── Self-assessed review (kept entirely separate from the recitation evidence above) ──────────
+  /** The learner's own assessments, oldest first (last 5). Never counted as recitation evidence. */
+  selfReviews?: SelfReviewEvent[];
+  /** Consecutive "solid" self-reviews on distinct days; reset by hesitated / forgot. */
+  selfStreak?: number;
+  /**
+   * Where a `weak` status comes from. "recitation" = confirmed recitation evidence: it outranks
+   * "self" and only a later valid recitation may clear it. Legacy rows without it are derived.
+   */
+  weakBy?: "recitation" | "self";
+  /** State just before today's first credited self-review, so a WORSE same-day assessment can correct it. */
+  selfBefore?: {
+    day: string;
+    intervalDays: number;
+    ease: number;
+    selfStreak: number;
+    streak: number;
+    status: AyahStatus;
+    weakBy?: "recitation" | "self";
+    nextReviewAt?: string;
+    lastReviewedAt?: string;
+  };
+}
+
+/** ثبتت (solid) · ترددت (hesitated) · نسيت (forgot). */
+export type SelfGrade = "solid" | "hesitated" | "forgot";
+export interface SelfReviewEvent {
+  at: string;
+  grade: SelfGrade;
+  /** Always "self": a self-assessment is never confused with validated recitation evidence. */
+  source: "self";
 }
 
 /** Exactly where the user stopped — powers "continue from the exact ayah". */

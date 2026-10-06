@@ -10,7 +10,8 @@
  */
 import { getSurahMeta } from "@/lib/quran/surahs";
 import { declareMemorized, isMemorized, recordOutcome, surahCompletion } from "@/lib/review/learning";
-import type { AyahRange, RecitationAnalysis } from "@/lib/types";
+import { applySelfReview, weakOrigin, type SelfReviewOutcome } from "@/lib/review/self-review";
+import type { AyahRange, RecitationAnalysis, SelfGrade } from "@/lib/types";
 import { todayKey, uid, type RecitationSummary, type UserState } from "./state";
 
 export function bumpActivity(s: UserState, field: "memorized" | "reviewed" | "recitations", n: number): UserState["activity"] {
@@ -93,5 +94,41 @@ export function applyRecitation(s: UserState, analysis: RecitationAnalysis, now 
     progress,
     recitations: [summary, ...s.recitations].slice(0, 100),
     activity: bumpActivity({ ...s, activity: bumpActivity(s, "recitations", 1) }, "reviewed", countsForLearning ? analysis.ayahs.filter((a) => a.status !== "uncertain").length : 0),
+  };
+}
+
+/**
+ * The learner self-assesses a whole review range (MVP: one grade for the range, no per-ayah picker).
+ * Each ayah is updated by `applySelfReview`, which never touches recitation evidence and never reaches
+ * mastery. "Reviewed" activity counts only ayahs that were actually credited today — repeated presses,
+ * early reviews and ayahs decided by a recitation add nothing.
+ */
+export function applySelfReviewRange(
+  s: UserState,
+  range: AyahRange,
+  grade: SelfGrade,
+  now = new Date(),
+): { state: UserState; counts: Record<SelfReviewOutcome, number>; stillNeedsRecitation: number } {
+  const counts: Record<SelfReviewOutcome, number> = { credited: 0, downgraded: 0, "same-day": 0, "not-due": 0, "recitation-today": 0, "not-memorized": 0 };
+  const progress = { ...s.progress };
+  let stillNeedsRecitation = 0;
+  for (let a = range.from; a <= range.to; a++) {
+    const key = `${range.surah}:${a}`;
+    const existing = progress[key];
+    if (!existing) {
+      counts["not-memorized"]++;
+      continue;
+    }
+    const r = applySelfReview(existing, grade, now);
+    counts[r.outcome]++;
+    if (r.progress !== existing) progress[key] = r.progress;
+    // a weakness from confirmed recitation evidence survives any self-assessment: say so honestly
+    if ((r.outcome === "credited" || r.outcome === "downgraded") && weakOrigin(r.progress) === "recitation") stillNeedsRecitation++;
+  }
+  const changed = counts.credited + counts.downgraded > 0;
+  return {
+    state: changed ? { ...s, progress, activity: counts.credited ? bumpActivity(s, "reviewed", counts.credited) : s.activity } : s,
+    counts,
+    stillNeedsRecitation,
   };
 }

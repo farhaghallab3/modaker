@@ -8,6 +8,7 @@ import { SourceLine } from "@/components/quran/QuranVerse";
 import { useAyahAudio } from "@/components/quran/useAyahAudio";
 import { BetaNote, RecitationFeedback, TextOnlyNote } from "@/components/recitation/RecitationFeedback";
 import { RecitationRecorder } from "@/components/recitation/RecitationRecorder";
+import { SelfGradeButtons } from "@/components/review/SelfReview";
 import { useRecitationRecorder } from "@/components/recitation/useRecitationRecorder";
 import { Icon } from "@/components/ui/Icon";
 import { Badge, Button, ButtonLink, cn, EmptyState, ErrorState, Toggle } from "@/components/ui/primitives";
@@ -20,6 +21,7 @@ import { clampRange, firstWord, memorizedRanges } from "@/lib/recitation/ranges"
 import { simulateTranscript } from "@/lib/recitation/simulate";
 import { ayahCountLabel, rangeLabel, relativeDueLabel } from "@/lib/review/labels";
 import { useApp } from "@/lib/store/AppProvider";
+import { isDueForReview, selfAssessable } from "@/lib/review/self-review";
 import { reviewQueue, todaysWird } from "@/lib/store/selectors";
 import type { AyahRange, RecitationAnalysis, SurahMeta, Transcript } from "@/lib/types";
 
@@ -418,6 +420,7 @@ function ReciteSession({
                       </div>
                     </div>
                   ) : null}
+                  <SelfAssessPrompt analysis={analysis} />
                   {listen ? <AudioPlayer audio={audio} ayahs={verses} title="استمع للآيات" defaultOpen /> : null}
                 </div>
               }
@@ -461,5 +464,42 @@ function ReciteSession({
         </FocusActionBar>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * When the recitation could not decide an ayah (unclear audio, unvalidated recognizer, doubtful words), the
+ * learner may assess the review themselves. Confirmed outcomes never get this offer.
+ */
+function SelfAssessPrompt({ analysis }: { analysis: RecitationAnalysis }) {
+  const { state } = useApp();
+  const now = useMemo(() => new Date(), []);
+  const ranges = useMemo(() => {
+    const keys = selfAssessable(analysis)
+      .filter((k) => {
+        const p = state.progress[k];
+        return !!p && isDueForReview(p, now);
+      })
+      .map((k) => k.split(":").map(Number) as [number, number])
+      .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const out: AyahRange[] = [];
+    for (const [surah, ayah] of keys) {
+      const last = out[out.length - 1];
+      if (last && last.surah === surah && last.to + 1 === ayah) last.to = ayah;
+      else out.push({ surah, from: ayah, to: ayah });
+    }
+    return out;
+  }, [analysis, state.progress, now]);
+  if (!ranges.length) return null;
+  const unheard = analysis.recognition !== "good";
+  return (
+    <section aria-label="قيّم مراجعتك" className="rounded-[var(--radius-card)] bg-white ring-1 ring-sand/40 px-4 py-4 sm:px-5">
+      <p className="text-sm leading-7 text-ink/85">
+        {unheard
+          ? "لم نسمع تلاوتك بوضوح، فلم نحتسب شيئًا. أعد التسميع، أو قيّم مراجعتك بنفسك:"
+          : "لم نتأكد من بعض الآيات، فلم نحتسب عليك شيئًا. أعد الجزء، أو قيّم مراجعتك بنفسك:"}
+      </p>
+      <SelfGradeButtons ranges={ranges} className="mt-3" />
+    </section>
   );
 }
