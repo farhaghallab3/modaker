@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useState, type ReactNode } from "react";
+import { HadithPanel, hadithBlocks } from "@/components/assistant/HadithBlockView";
 import { QuranVerse } from "@/components/quran/QuranVerse";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Button, cn } from "@/components/ui/primitives";
@@ -123,6 +124,15 @@ export function AnswerView({
 
   switch (answer.kind) {
     case "grounded": {
+      const hadiths = hadithBlocks(answer.blocks);
+      if (hadiths.length) {
+        // a hadith answer is the source's own fields, verbatim (see HadithBlockView) — no assistant prose
+        return (
+          <div className="space-y-4">
+            <HadithPanel items={hadiths} />
+          </div>
+        );
+      }
       const body = <RichText text={answer.text} citations={answer.citations} idPrefix={idPrefix} />;
       return (
         <div className="space-y-4">

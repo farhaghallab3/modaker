@@ -75,6 +75,8 @@ export const env = {
       .split(",")
       .map((d) => d.trim().toLowerCase())
       .filter(Boolean),
+  /** Hadith source. "hadeethenc" = the official HadeethEnc API (no key); anything else → hadith requests abstain. */
+  hadithProvider: () => str("HADITH_PROVIDER", "off").toLowerCase(),
   embeddingProvider: () => str("EMBEDDING_PROVIDER", "openai") as "openai" | "none",
 
   /** 0 = never persist audio (default). */

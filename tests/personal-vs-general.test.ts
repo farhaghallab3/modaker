@@ -232,5 +232,5 @@ test("general fiqh is in the source taxonomy; its planned sources are registered
     assert.equal(s.tier, 4, s.id);
   }
   // nothing about this changes what the assistant may use today
-  assert.deepEqual(approvedSourceIds().sort(), ["quran-com:uthmani", "tafsir:muyassar", "tanzil:uthmani"]);
+  assert.deepEqual(approvedSourceIds().sort(), ["hadeethenc:hadith", "quran-com:uthmani", "tafsir:muyassar", "tanzil:uthmani"]);
 });

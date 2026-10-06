@@ -28,6 +28,7 @@ import type { LLMProvider } from "../llm/provider";
 import type { QuranProvider, TafsirSlug } from "../quran/common";
 import { filterCitations, verifyGeneratedAnswer, type VerifyIssue } from "../safety/answer-verifier";
 import { NO_HADITH_PROVIDER, type HadithProvider } from "../safety/hadith";
+import { HADEETHENC_SITE_NAME } from "../hadith/hadeethenc";
 import type { QuoteMatch, QuranQuoteIndex } from "../safety/quote-verifier";
 import { applyClassifiers, routeDeterministic, type Intent, type RouteDecision, type SafetyClassifier } from "../safety/router";
 import { TEMPLATES } from "../safety/templates";
@@ -290,14 +291,27 @@ export function createAssistant(deps: AssistantDeps) {
       if (decision.intent === "non-arabic") return abstain("language_unsupported", { provider: "guard" });
 
       // ── hadith: never from memory ───────────────────────────────────────
-      if (decision.intent === "hadith-request") {
+      // A hadith REQUEST goes to the approved hadith source only (never to the web fallback). A ruling-like (Level C) question that merely
+      // mentions a hadith is a fiqh question: it skips this branch and meets the fiqh rules below.
+      if (decision.intent === "hadith-request" && decision.level !== "C") {
         if (!hadith.available) return abstain("no_hadith_source", { provider: "hadith:none" });
-        const found = await hadith.find(decision.cleanedQuestion);
+        const found = await hadith.find(q);
         if (!found.length) return abstain("no_hadith_source", { provider: `hadith:${hadith.id}` });
-        const citations: Citation[] = found.map((h) => ({ sourceId: h.sourceId, title: h.reference, ref: h.reference, excerpt: truncate(h.text, 240), sourceKind: "hadith" }));
+        const citations: Citation[] = found.map((h) => ({
+          sourceId: h.sourceId,
+          title: h.sourceTitle ?? HADEETHENC_SITE_NAME,
+          ref: h.id ? `رقم الحديث ${h.id}` : h.reference,
+          excerpt: truncate(h.text, 240),
+          url: h.url,
+          sourceKind: "hadith",
+        }));
+        // plain-text rendering of the same verbatim fields (history, accessibility); the UI shows the typed blocks
+        const plain = found
+          .map((h) => [h.text, `الدرجة: ${h.grade}`, h.attribution ? `العزو: ${h.attribution}` : "", `المرجع: ${h.reference}`, `المصدر: ${h.sourceTitle ?? HADEETHENC_SITE_NAME}${h.url ? ` — ${h.url}` : ""}`].filter(Boolean).join("\n"))
+          .join("\n\n");
         return finish({
           type: "sourced_explanation",
-          text: compose(found.map((h) => `${h.text}\n(${h.reference} — ${h.grade})`).join("\n\n")),
+          text: compose(plain),
           provider: `hadith:${hadith.id}`,
           citations,
           blocks: [...preBlocks, ...found],
@@ -698,9 +712,11 @@ export async function answerQuestion(input: AskInput): Promise<AssistantAnswer> 
           env.assistantWebDailyCap(),
         )
       : null;
+  const { hadithProviderFromEnv } = await import("../hadith/hadeethenc");
   const assistant = createAssistant({
     quran,
     web,
+    hadith: hadithProviderFromEnv(),
     retriever: new retrievers.HybridRetriever(parts),
     llm: getLlmProvider(),
     generationEnabled: env.assistantGeneration(),

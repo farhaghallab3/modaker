@@ -176,7 +176,7 @@ test("planned sources are inert: nothing disabled, draft, or unreviewed is usabl
     assert.equal(isSourceUsable(s), s.enabled && (s.reviewState === "approved" || s.reviewState === "published"), s.id);
     if (!s.enabled) assert.equal(isApproved(s.id), false, s.id);
   }
-  for (const id of ["king-fahd-complex:quran", "quranenc:translations", "hadeethenc:hadith", "dorar:hadith-verification", "jamhara:terminology", "tafsir:ibn-kathir"]) {
+  for (const id of ["king-fahd-complex:quran", "quranenc:translations", "dorar:hadith-verification", "jamhara:terminology", "tafsir:ibn-kathir"]) {
     assert.equal(isApproved(id), false, `${id} is planned only`);
     assert.equal(KNOWLEDGE_SOURCES[id].licenseVerified, false, `${id} terms not yet verified`);
   }
@@ -190,7 +190,10 @@ test("the editorial/demo source can never be used by the assistant", () => {
 });
 
 test("only the current, already-in-use sources are usable", () => {
-  assert.deepEqual(approvedSourceIds().sort(), ["quran-com:uthmani", "tafsir:muyassar", "tanzil:uthmani"]);
+  assert.deepEqual(approvedSourceIds().sort(), ["hadeethenc:hadith", "quran-com:uthmani", "tafsir:muyassar", "tanzil:uthmani"]);
+  // the one approved hadith source: terms reviewed (verbatim use + attribution), used only via the dedicated hadith provider
+  assert.equal(KNOWLEDGE_SOURCES["hadeethenc:hadith"].kind, "hadith");
+  assert.equal(KNOWLEDGE_SOURCES["hadeethenc:hadith"].licenseVerified, true);
 });
 
 test("the King Fahd Complex source is registered as the future canonical text but is not switched on", () => {

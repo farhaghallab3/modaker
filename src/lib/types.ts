@@ -362,7 +362,26 @@ export interface Citation {
  */
 export type AnswerBlock =
   | { type: "quran"; verses: Ayah[]; source: SourceRef; caption?: string }
-  | { type: "hadith"; text: string; narrator?: string; grade: string; gradedBy?: string; reference: string; sourceId: string }
+  | {
+      type: "hadith";
+      /** verbatim from the source */
+      text: string;
+      narrator?: string;
+      /** verbatim from the source — never normalised */
+      grade: string;
+      gradedBy?: string;
+      /** verbatim from the source (التخريج / المراجع) */
+      reference: string;
+      sourceId: string;
+      /** the source's stable id for this hadith */
+      id?: string;
+      title?: string;
+      /** verbatim العزو, e.g. «متفق عليه» */
+      attribution?: string;
+      /** canonical public page of this hadith at the source */
+      url?: string;
+      sourceTitle?: string;
+    }
   | { type: "source_quote"; text: string; sourceId: string; ref: string; author?: string; citation: number }
   | { type: "explanation"; text: string; origin: "template" | "extractive" | "generated"; citations: number[] }
   | { type: "warning"; text: string; code: "sensitive" | "quote_mismatch" | "injection" | "hostile" | "language" | "policy"; templateId?: string; templateVersion?: number }
