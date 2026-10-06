@@ -68,8 +68,9 @@ export const VIDEOS: CuratedVideo[] = [
     storySlug: "musa-wal-khidr",
     range: { surah: 18, from: 60, to: 82 },
     durationLabel: "١٧ دقيقة",
-    isDemo: true,
-    reviewState: "draft",
+    // reviewed + published: supplementary viewing for the Musa / al-Khidr passage only; Modaker does not repeat or endorse the video's teaser claim about al-Khidr
+    isDemo: false,
+    reviewState: "published",
   },
   {
     id: "v-dhul-qarnayn",
@@ -81,8 +82,9 @@ export const VIDEOS: CuratedVideo[] = [
     storySlug: "dhul-qarnayn",
     range: { surah: 18, from: 83, to: 98 },
     durationLabel: "١٤ دقيقة",
-    isDemo: true,
-    reviewState: "draft",
+    // reviewed + published: supplementary viewing only (external video): not Quran/tafsir evidence
+    isDemo: false,
+    reviewState: "published",
   },
   {
     id: "v-maryam-story",
@@ -179,8 +181,9 @@ export const VIDEOS: CuratedVideo[] = [
     surah: 5,
     range: { surah: 5, from: 27, to: 31 },
     durationLabel: "١١ دقيقة",
-    isDemo: true,
-    reviewState: "draft",
+    // reviewed + published: supplementary viewing only (external video): not Quran/tafsir evidence
+    isDemo: false,
+    reviewState: "published",
   },
   {
     id: "v-hud",
@@ -214,8 +217,9 @@ export const VIDEOS: CuratedVideo[] = [
     description: "مقطع قصير للشيخ أ.د. عبدالعزيز الفوزان عن فضل قراءة سورة الملك كل ليلة قبل النوم.",
     surah: 67,
     durationLabel: "دقيقتان",
-    isDemo: true,
-    reviewState: "draft",
+    // reviewed + published: supplementary viewing only (external video): its virtue claim is NOT assistant evidence
+    isDemo: false,
+    reviewState: "published",
   },
 ];
 

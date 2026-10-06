@@ -28,13 +28,21 @@ const plain = { id: "u-plain", role: "user" as const };
 
 // ── demo vs review state ─────────────────────────────────────────────────
 
-test("every seeded story and video is demo AND draft — never approved or published by default", () => {
+/** The only videos reviewed and approved so far (supplementary external viewing; see tests/videos-visibility.test.ts). */
+const APPROVED_VIDEOS = ["v-mulk-fadl", "v-dhul-qarnayn", "v-musa-khidr", "v-qabil-habil"];
+
+test("every seeded story, and every video except the explicitly approved ones, is demo AND draft — never published by default", () => {
   assert.ok(STORIES.length >= 6 && VIDEOS.length >= 1);
-  for (const x of [...STORIES, ...VIDEOS]) {
+  for (const x of [...STORIES, ...VIDEOS.filter((v) => !APPROVED_VIDEOS.includes(v.id))]) {
     assert.equal(x.isDemo, true, "seed content is demo");
     assert.equal(x.reviewState, "draft", "seed content is unreviewed");
     assert.equal(isAssistantEligible(x), false, "the assistant never treats it as knowledge");
     assert.equal(needsDemoNotice(x), true, "the UI labels it");
+  }
+  for (const id of APPROVED_VIDEOS) {
+    const v = VIDEOS.find((x) => x.id === id)!;
+    assert.equal(v.isDemo, false, id);
+    assert.equal(v.reviewState, "published", id);
   }
 });
 
