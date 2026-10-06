@@ -18,7 +18,7 @@ export interface AssistantContext {
 }
 
 export const ASSISTANT_SUGGESTIONS = [
-  "اشرح لي هذه الآية",
+  "اشرح لي الآية ٢ من سورة الفاتحة",
   "احكِ لي قصة أصحاب الكهف",
   "اختبرني في سورة مريم",
   "ما معنى هذه الكلمة؟",

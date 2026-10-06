@@ -33,7 +33,7 @@ import { applyClassifiers, routeDeterministic, type Intent, type RouteDecision, 
 import { TEMPLATES } from "../safety/templates";
 import { buildUserMessage, INSUFFICIENT_SENTINEL, passageLabel, SYSTEM_PROMPT } from "./prompt";
 import { buildQuiz } from "./quiz";
-import { parseReferences, rangeSize, type ParsedReferences, type ReferenceContext } from "./references";
+import { findReferences, parseReferences, rangeSize, type ParsedReferences, type ReferenceContext } from "./references";
 import { ayahRefLabel, quranComUrl, TafsirRetriever, type Passage, type Retriever } from "./retriever";
 import { getSource, hasApprovedAsbabSource, isApproved } from "./sources";
 import type { WebAnswerer } from "./web-answer";
@@ -556,6 +556,10 @@ export function createAssistant(deps: AssistantDeps) {
       // A disputed / sensitive (Level C) question must not be answered with the tafsir of whatever ayah the learner
       // happens to be viewing: an ayah that only came from the screen is not a reference made in the question.
       if (d.level === "C" && r.fromContext) r = { ...r, surahs: [], ranges: [], fromContext: false };
+      // «هذه الآية» but the screen only knows a surah: never pick an ayah for the learner — ask which one.
+      if (d.level !== "C" && r.fromContext && !r.ranges.length && findReferences(q).deictic) {
+        return finish({ type: "clarification", text: compose(TEMPLATES.ayahNeeded.text), provider: "guard:ayah-needed", abstain: "needs_clarification" });
+      }
       const passages = await deps.retriever.retrieve(d.cleanedQuestion || q, { refs: r, limit: PASSAGE_LIMIT });
       meta.passages = passages.length;
 

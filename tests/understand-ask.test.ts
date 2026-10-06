@@ -210,3 +210,33 @@ test("the web answerer is only a FALLBACK after the approved sources found nothi
   const plain = await make().answer({ question: "ما حكم لمس المصحف بدون وضوء؟", context: ctx });
   assert.equal(plain.abstainReason, "no_fiqh_source");
 });
+
+// ── «هذه الآية» with a surah-only context (the global pill / assistant screen) ─────────────────────
+
+test("«اشرح لي هذه الآية» with only a surah in context asks WHICH ayah (no guessing, no bare no_evidence)", async () => {
+  const web = new FakeWeb();
+  for (const q of ["اشرح لي هذه الآية", "اشرح لي هذه الآية ببساطة", "ما معنى هذه الآية؟"]) {
+    for (const [llm, gen] of [[null, false], [new FakeLlm(), true]] as const) {
+      const a = await makeWithWeb(web, llm, gen).answer({ question: q, context: { surah: 67 } });
+      assert.equal(a.answerType, "clarification", q);
+      assert.equal(a.abstainReason, "needs_clarification", q);
+      assert.equal(a.citations.length, 0, "no tafsir of an arbitrary ayah is offered");
+      assert.match(a.text, /رقم الآية/);
+      if (llm) assert.equal(llm.requests.length, 0);
+    }
+  }
+  assert.equal(web.calls, 0);
+});
+
+test("the same question WITH the exact ayah in context is still a grounded, cited explanation", async () => {
+  const llm = new FakeLlm("الآية تتحدث عن الصبر والثبات [1].");
+  const a = await make(llm, true).answer({ question: "اشرح لي هذه الآية", context: ctx });
+  assert.equal(a.abstained, false);
+  assert.equal(a.citations[0].sourceId, "tafsir:muyassar");
+});
+
+test("an explicit ayah in the question still works with a surah-only context", async () => {
+  const a = await make(null, false).answer({ question: "اشرح لي الآية ١٢", context: { surah: 67 } });
+  assert.equal(a.abstained, false);
+  assert.equal(a.citations[0].sourceId, "tafsir:muyassar");
+});

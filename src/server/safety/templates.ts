@@ -93,6 +93,8 @@ export const TEMPLATES = {
   extractiveIntro: t("extractive.intro", "إليك ما ورد في المصادر المعتمدة حول سؤالك:", "operational"),
   needsRef: t("needsref", "حدّد السورة ورقم الآية حتى أعرض لك النص من المصحف الموثّق، مثل: «اعرض الآية ٥ من سورة الملك».", "operational"),
   outOfRange: t("range.out", "هذه الآية خارج نطاق السورة المذكورة. تأكد من رقم الآية وأعد المحاولة.", "operational"),
+  /** «هذه الآية» asked while only a surah (no ayah) is known: ask which ayah instead of guessing one. */
+  ayahNeeded: t("ayah.needed", "لم أستطع تحديد الآية التي تقصدها لأن السياق الحالي سورة كاملة. اكتب رقم الآية، مثل: «اشرح لي الآية ٢»، أو افتح الآية في صفحة الحفظ أو التسميع واسأل من هناك.", "operational"),
   quizNeedsSurah: t("quiz.needsurah", "اختر سورة أولًا ثم اطلب الاختبار، مثل: «اختبرني في سورة الملك»، أو افتح السورة في صفحة الحفظ واطلبه من هناك.", "operational"),
   unavailable: t("source.unavailable", "تعذّر الوصول إلى مصدر النصوص الموثّق الآن، فلم أستطع الإجابة. حاول مرة أخرى بعد قليل.", "operational"),
   relatedSources: t("sources.related", "ويمكنك الاطلاع على التفسير المعتمد للآيات المذكورة في المصادر المرفقة.", "operational"),
