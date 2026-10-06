@@ -55,7 +55,7 @@ export const STORIES: Story[] = [
     isDemo: true,
     reviewState: "draft",
     references: REFS,
-    videoIds: ["v-yusuf-journey", "v-yusuf-brothers"],
+    videoIds: ["v-yusuf-journey"],
     chapters: [
       ch("yusuf", 1, "رؤيا يوسف", "يحدّث يوسف أباه برؤيا رآها، فيوصيه يعقوب أن يكتمها عن إخوته.", 12, 4, 6),
       ch("yusuf", 2, "يوسف وإخوته", "يتشاور الإخوة في أمر يوسف، ثم يأخذونه معهم ويتركونه في البئر، ويعودون إلى أبيهم.", 12, 7, 18),
@@ -76,7 +76,15 @@ export const STORIES: Story[] = [
     accent: "forest",
     isDemo: true,
     reviewState: "draft",
-    references: REFS,
+    references: [
+      ...REFS,
+      {
+        id: "twinkl:qst-ashab-alkhf",
+        title: "قصة أصحاب الكهف",
+        publisher: "Twinkl",
+        url: "https://www.twinkl.com.eg/teaching-wiki/qst-ashab-alkhf",
+      },
+    ],
     videoIds: ["v-kahf-cave"],
     chapters: [
       ch("ashab-al-kahf", 1, "اللجوء إلى الكهف", "تبدأ القصة بالفتية وهم يلجؤون إلى الكهف داعين ربهم، ثم يغشاهم نوم طويل.", 18, 9, 12),
@@ -94,7 +102,15 @@ export const STORIES: Story[] = [
     accent: "sand",
     isDemo: true,
     reviewState: "draft",
-    references: REFS,
+    references: [
+      ...REFS,
+      {
+        id: "islamweb:library:59-61",
+        title: "قصة موسى والخضر عليهما الصلاة والسلام",
+        publisher: "إسلام ويب — من كتاب «البداية والنهاية» لابن كثير",
+        url: "https://www.islamweb.net/ar/library/content/59/61/%D9%82%D8%B5%D8%A9-%D9%85%D9%88%D8%B3%D9%89-%D9%88%D8%A7%D9%84%D8%AE%D8%B6%D8%B1-%D8%B9%D9%84%D9%8A%D9%87%D9%85%D8%A7-%D8%A7%D9%84%D8%B5%D9%84%D8%A7%D8%A9-%D9%88%D8%A7%D9%84%D8%B3%D9%84%D8%A7%D9%85",
+      },
+    ],
     videoIds: ["v-musa-khidr"],
     chapters: [
       ch("musa-wal-khidr", 1, "الرحلة", "يعزم موسى على الرحلة مع فتاه، وتكون علامة الموضع المقصود فَقْدَ الحوت.", 18, 60, 64),
@@ -112,7 +128,15 @@ export const STORIES: Story[] = [
     accent: "olive",
     isDemo: true,
     reviewState: "draft",
-    references: REFS,
+    references: [
+      ...REFS,
+      {
+        id: "islamweb:fatwa:107028",
+        title: "قصة ذي القرنين كما وردت في سورة الكهف",
+        publisher: "إسلام ويب — مركز الفتوى",
+        url: "https://www.islamweb.net/ar/fatwa/107028/%D9%82%D8%B5%D8%A9-%D8%B0%D9%8A-%D8%A7%D9%84%D9%82%D8%B1%D9%86%D9%8A%D9%86-%D9%83%D9%85%D8%A7-%D9%88%D8%B1%D8%AF%D8%AA-%D9%81%D9%8A-%D8%B3%D9%88%D8%B1%D8%A9-%D8%A7%D9%84%D9%83%D9%87%D9%81",
+      },
+    ],
     videoIds: ["v-dhul-qarnayn"],
     chapters: [
       ch("dhul-qarnayn", 1, "نحو المغرب", "يُذكر ما أُعطيه ذو القرنين، ثم وصوله إلى أقصى المغرب وحكمه في القوم الذين وجدهم هناك.", 18, 83, 88),
@@ -129,8 +153,16 @@ export const STORIES: Story[] = [
     accent: "terracotta",
     isDemo: true,
     reviewState: "draft",
-    references: REFS,
-    videoIds: ["v-maryam-story"],
+    references: [
+      ...REFS,
+      {
+        id: "islamweb:article:175527",
+        title: "قصة مريم عليها السلام في القرآن",
+        publisher: "إسلام ويب",
+        url: "https://www.islamweb.net/ar/article/175527/%D9%82%D8%B5%D8%A9-%D9%85%D8%B1%D9%8A%D9%85-%D8%B9%D9%84%D9%8A%D9%87%D8%A7-%D8%A7%D9%84%D8%B3%D9%84%D8%A7%D9%85-%D9%81%D9%8A-%D8%A7%D9%84%D9%82%D8%B1%D8%A2%D9%86",
+      },
+    ],
+    videoIds: ["v-maryam-story", "v-maryam-story-2", "v-maryam-narrated"],
     chapters: [
       ch("maryam", 1, "البشارة", "تعتزل مريم أهلها، فيأتيها رسول من الله في هيئة بشر ويبشّرها بغلام.", 19, 16, 21),
       ch("maryam", 2, "الميلاد", "تحمل مريم وتبتعد إلى مكان بعيد، ويشتدّ عليها ألم الولادة عند نخلة، فتأتيها الطمأنينة.", 19, 22, 26),
@@ -147,7 +179,15 @@ export const STORIES: Story[] = [
     accent: "sand",
     isDemo: true,
     reviewState: "draft",
-    references: REFS,
+    references: [
+      ...REFS,
+      {
+        id: "islamweb:library:59-86",
+        title: "قصة زكريا ويحيى عليهما السلام كما حكاها القرآن",
+        publisher: "إسلام ويب — من كتاب «البداية والنهاية» لابن كثير",
+        url: "https://www.islamweb.net/ar/library/content/59/86/%D9%82%D8%B5%D8%AA%D9%87%D9%85%D8%A7-%D9%83%D9%85%D8%A7-%D8%AD%D9%83%D8%A7%D9%87%D8%A7-%D8%A7%D9%84%D9%82%D8%B1%D8%A2%D9%86",
+      },
+    ],
     videoIds: ["v-zakariya"],
     chapters: [
       ch("zakariya-yahya", 1, "دعاء زكريا", "يدعو زكريا ربه أن يهبه ولدًا صالحًا، مع كِبَر سنّه.", 19, 2, 6),

@@ -59,6 +59,18 @@ export const env = {
   sttTrace: () => str("STT_TRACE", "off").toLowerCase() === "on",
   /** Development-only raw STT benchmark (page + API). Off unless explicitly on; the API also refuses non-local hosts. */
   sttBenchmark: () => str("STT_BENCHMARK", "off").toLowerCase() === "on",
+  /**
+   * Web-grounded answers (Claude + web search restricted to trusted Islamic sites).
+   * Explicit opt-in: needs ANTHROPIC_API_KEY AND ASSISTANT_WEB_SEARCH=on; off otherwise. Used only as a fallback after the approved sources found nothing.
+   */
+  assistantWebSearch: () => str("ASSISTANT_WEB_SEARCH", "off").toLowerCase() === "on",
+  assistantWebModel: () => str("ASSISTANT_WEB_MODEL", "claude-opus-5-5"),
+  /** Comma-separated allow-list; empty → DEFAULT_TRUSTED_DOMAINS in src/server/rag/web-answer.ts. */
+  assistantTrustedDomains: () =>
+    str("ASSISTANT_TRUSTED_DOMAINS")
+      .split(",")
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean),
   embeddingProvider: () => str("EMBEDDING_PROVIDER", "openai") as "openai" | "none",
 
   /** 0 = never persist audio (default). */

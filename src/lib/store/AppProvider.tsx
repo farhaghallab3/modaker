@@ -19,6 +19,13 @@ import type {
   SelfGrade,
   UserProfile,
 } from "@/lib/types";
+import {
+  createDeviceAccount,
+  hasDeviceAccount,
+  removeDeviceAccount,
+  saveDeviceAccountState,
+  verifyDeviceAccount,
+} from "./device-accounts";
 import { createRepository, isApiMode } from "./repository";
 import { applyMarkMemorized, applyRecitation, applySelfReviewRange } from "./reducers";
 import { EMPTY_STATE, todayKey, uid, type Goals, type PrivacySettings, type UserState } from "./state";
@@ -68,6 +75,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const repo = useRef(createRepository());
   const [state, setState] = useState<UserState>(EMPTY_STATE);
   const [ready, setReady] = useState(false);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     let alive = true;
@@ -85,7 +94,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // persist after every change once loaded
   useEffect(() => {
-    if (ready) void repo.current.save(state);
+    if (!ready) return;
+    void repo.current.save(state);
+    if (!isApiMode()) saveDeviceAccountState(state); // each device account keeps its own copy
   }, [state, ready]);
 
   const update = useCallback((fn: (s: UserState) => UserState) => setState((s) => fn(s)), []);
@@ -103,7 +114,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body.error ?? "تعذّر إنشاء الحساب");
         }
+        const deviceOnly = !res?.ok;
+        if (deviceOnly && hasDeviceAccount(email)) throw new Error("هذا البريد مسجّل مسبقًا. سجّل الدخول بدلًا من إنشاء حساب جديد.");
         const userId = res?.ok ? ((await res.json()).user?.id ?? uid("u")) : uid("local");
+        if (deviceOnly) await createDeviceAccount(email, userId, password, null);
         update(() => ({
           ...EMPTY_STATE,
           session: { userId, email },
@@ -129,19 +143,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ email, password }),
         }).catch(() => null);
         if (res && res.status === 401) throw new Error("البريد الإلكتروني أو كلمة المرور غير صحيحة");
+        if (res && !res.ok) {
+          // Only "no database on this server" falls back to a device-only account;
+          // any other failure (rate limit, server error) is shown, never treated as a sign-in.
+          const body = await res.json().catch(() => ({}));
+          if (body.code !== "no_database") throw new Error(body.error ?? "تعذّر تسجيل الدخول، حاول مرة أخرى.");
+        }
         if (res?.ok) {
           // Real account: adopt the server's saved state. Never seed an empty state here —
           // the autosave effect would overwrite the user's stored progress with it.
           const user = (await res.json().catch(() => ({}))).user as { id?: string; email?: string } | undefined;
           const loaded = await repo.current.load().catch(() => null);
           if (!loaded && isApiMode()) throw new Error("تعذّر تحميل بياناتك. حاول مرة أخرى.");
-          setState(loaded ?? { ...EMPTY_STATE, session: { userId: user?.id ?? uid("local"), email } });
+          const session = { userId: user?.id ?? uid("local"), email };
+          if (isApiMode()) setState({ ...loaded!, session });
+          // Device copy: keep it only if it belongs to this account (it is stored signed-out after logout).
+          else setState(loaded && !loaded.demo && loaded.profile?.email === email ? { ...loaded, session } : { ...EMPTY_STATE, session });
           return;
         }
-        update((s) => {
-          if (s.session && s.profile?.email === email) return s; // same device account
-          return { ...EMPTY_STATE, session: { userId: uid("local"), email } };
-        });
+        // Device-only account (no database on the server): recognise the email and check the password.
+        const account = await verifyDeviceAccount(email, password);
+        if (account) {
+          setState({ ...(account.state ?? EMPTY_STATE), demo: false, session: { userId: account.userId, email } });
+          return;
+        }
+        if (hasDeviceAccount(email)) throw new Error("البريد الإلكتروني أو كلمة المرور غير صحيحة");
+        // An account created on this device before accounts were stored per email: adopt it once.
+        const legacy = await repo.current.load().catch(() => null);
+        if (legacy && !legacy.demo && legacy.profile?.email === email) {
+          const userId = legacy.session?.userId ?? legacy.profile.id ?? uid("local");
+          await createDeviceAccount(email, userId, password, { ...legacy, session: null });
+          setState({ ...legacy, session: { userId, email } });
+          return;
+        }
+        throw new Error("لا يوجد حساب بهذا البريد الإلكتروني. أنشئ حسابًا أولًا.");
       },
       async signOut() {
         await fetch("/api/v1/auth/logout", { method: "POST" }).catch(() => null);
@@ -241,8 +276,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         update((s) => ({ ...s, privacy: { ...s.privacy, ...p } }));
       },
       async deleteAllData() {
+        const email = stateRef.current.session?.email;
         await repo.current.clear();
         await fetch("/api/v1/me", { method: "DELETE" }).catch(() => null);
+        if (email) removeDeviceAccount(email);
         setState(EMPTY_STATE);
       },
     }),

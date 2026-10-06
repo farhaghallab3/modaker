@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/primitives";
 import { useApp } from "@/lib/store/AppProvider";
 import { AuthHeading, DemoLink, EMAIL_RE, FormError, PasswordField, TextField } from "./AuthParts";
 
-type Values = { name: string; email: string; password: string };
+type Values = { name: string; email: string; password: string; confirm: string };
 type Errors = Partial<Record<keyof Values, string>>;
 
 function validate(v: Values): Errors {
@@ -16,6 +16,8 @@ function validate(v: Values): Errors {
   if (!v.email.trim()) e.email = "نحتاج بريدك الإلكتروني لإنشاء الحساب.";
   else if (!EMAIL_RE.test(v.email.trim())) e.email = "يبدو أن البريد الإلكتروني غير مكتمل.";
   if (v.password.length < 8) e.password = "كلمة المرور ٨ أحرف على الأقل.";
+  if (!v.confirm) e.confirm = "أعد كتابة كلمة المرور للتأكيد.";
+  else if (v.confirm !== v.password) e.confirm = "كلمتا المرور غير متطابقتين.";
   return e;
 }
 
@@ -23,7 +25,7 @@ export function RegisterScreen() {
   const { actions } = useApp();
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const [values, setValues] = useState<Values>({ name: "", email: "", password: "" });
+  const [values, setValues] = useState<Values>({ name: "", email: "", password: "", confirm: "" });
   const [touched, setTouched] = useState<Partial<Record<keyof Values, boolean>>>({});
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -97,6 +99,16 @@ export function RegisterScreen() {
           error={show("password")}
           hint="٨ أحرف على الأقل."
           minLength={8}
+          required
+        />
+        <PasswordField
+          label="تأكيد كلمة المرور"
+          name="confirm"
+          autoComplete="new-password"
+          value={values.confirm}
+          onChange={set("confirm")}
+          onBlur={blur("confirm")}
+          error={show("confirm")}
           required
         />
 

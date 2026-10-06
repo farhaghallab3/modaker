@@ -145,3 +145,68 @@ test("voice: real speech passes (no flagged segment, or only a short flagged tai
     false,
   );
 });
+
+// ── optional web answerer: strictly a fallback, never ahead of approved sources or the asbab rule ─────
+import type { WebAnswer, WebAnswerer } from "../src/server/rag/web-answer";
+import { env } from "../src/server/env";
+
+class FakeWeb implements WebAnswerer {
+  readonly id = "fake-web";
+  calls = 0;
+  async answer(): Promise<WebAnswer> {
+    this.calls++;
+    return { status: "answered", text: "جواب من موقع موثوق.", citations: [{ sourceId: "web:test", title: "موقع موثوق", ref: "https://example.test/a", excerpt: "…", sourceKind: "other" }], model: "fake" };
+  }
+}
+function makeWithWeb(web: FakeWeb, llm: FakeLlm | null = null, generation = false) {
+  const quran = new FakeQuran();
+  return createAssistant({ quran, retriever: new TafsirRetriever(quran, "muyassar"), llm, generationEnabled: generation, web });
+}
+
+test("the web answerer is OFF unless explicitly configured (key AND ASSISTANT_WEB_SEARCH=on)", () => {
+  const prev = process.env.ASSISTANT_WEB_SEARCH;
+  delete process.env.ASSISTANT_WEB_SEARCH;
+  assert.equal(env.assistantWebSearch(), false);
+  process.env.ASSISTANT_WEB_SEARCH = "on";
+  assert.equal(env.assistantWebSearch(), true);
+  if (prev === undefined) delete process.env.ASSISTANT_WEB_SEARCH;
+  else process.env.ASSISTANT_WEB_SEARCH = prev;
+});
+
+test("with the web answerer configured, asbab questions STILL abstain and the web is never consulted", async () => {
+  const web = new FakeWeb();
+  const a = await makeWithWeb(web).answer({ question: "لماذا نزلت هذه الآية؟", context: ctx });
+  assert.equal(a.abstainReason, "no_asbab_source");
+  assert.equal(web.calls, 0);
+});
+
+test("with the web answerer configured, an ayah explanation is still answered from the approved tafsir (web not consulted)", async () => {
+  const web = new FakeWeb();
+  const llm = new FakeLlm("الآية تتحدث عن الصبر والثبات [1].");
+  const a = await makeWithWeb(web, llm, true).answer({ question: "اشرح لي هذه الآية ببساطة", context: ctx });
+  assert.equal(a.abstained, false);
+  assert.equal(a.citations[0].sourceId, "tafsir:muyassar");
+  assert.equal(a.generation?.used, true);
+  assert.equal(web.calls, 0, "approved sources are authoritative");
+});
+
+test("personal rulings and off-topic questions never reach the web answerer", async () => {
+  const web = new FakeWeb();
+  for (const q of ["هل يجوز لي أن أطلّق زوجتي إذا غضبت؟", "ما سعر الدولار اليوم؟"]) {
+    const a = await makeWithWeb(web).answer({ question: q, context: ctx });
+    assert.equal(a.citations.length, 0, q);
+  }
+  assert.equal(web.calls, 0);
+});
+
+test("the web answerer is only a FALLBACK after the approved sources found nothing — and attaches no unrelated ayah from the screen", async () => {
+  const web = new FakeWeb();
+  const a = await makeWithWeb(web).answer({ question: "ما حكم لمس المصحف بدون وضوء؟", context: ctx });
+  assert.equal(web.calls, 1);
+  assert.equal(a.provider, "anthropic-web:fake");
+  assert.ok(a.citations.every((c) => c.sourceId !== "tafsir:muyassar" && !/١٢/.test(c.ref)), "no citation of the ayah on screen");
+  assert.equal(a.verses, undefined);
+  // without the web answerer the same question is the plain fiqh-gap abstention
+  const plain = await make().answer({ question: "ما حكم لمس المصحف بدون وضوء؟", context: ctx });
+  assert.equal(plain.abstainReason, "no_fiqh_source");
+});
