@@ -8,9 +8,11 @@
  * • `intro` and chapter `summary` are short, neutral narrative framing written
  *   by the editorial team — they are NOT tafsir. Explanations shown to users
  *   always come from an approved tafsir (التفسير الميسر) via `api.tafsir(n)`.
- * • Every story ships as `isDemo: true, reviewState: "draft"` until a qualified reviewer
- *   approves the copy; the UI shows a visible notice for demo content, and the assistant
- *   never treats it as knowledge (see src/lib/content-state.ts).
+ * • A story is shown to learners only when `isDemo: false` AND `reviewState: "published"`
+ *   (see src/lib/content-state.ts). The six stories below were reviewed against their declared
+ *   ranges and Tafsir al-Muyassar. Their `references` list ONLY the canonical Quran source and
+ *   Tafsir al-Muyassar — never external pages. Story text is not assistant knowledge: no
+ *   server/RAG code reads this file.
  * • Ranges must be contiguous, ascending and within the surah's ayah count —
  *   `validateStories()` below checks this and is cheap enough to run in tests.
  */
@@ -38,7 +40,8 @@ export const STORY_REFERENCES: Record<"quran" | "muyassar" | "editorial", Source
   },
 };
 
-const REFS = [STORY_REFERENCES.quran, STORY_REFERENCES.muyassar, STORY_REFERENCES.editorial];
+/** Story references: ONLY approved Modaker sources (the canonical Quran and Tafsir al-Muyassar). No external pages. */
+const REFS = [STORY_REFERENCES.quran, STORY_REFERENCES.muyassar];
 
 function ch(slug: string, order: number, title: string, summary: string, surah: number, from: number, to: number): StoryChapter {
   return { id: `${slug}-${String(order).padStart(2, "0")}`, order, title, summary, ranges: [{ surah, from, to }] };
@@ -53,8 +56,8 @@ export const STORIES: Story[] = [
       "قصة متصلة تُروى في سورة يوسف من أولها إلى آخرها تقريبًا: رؤيا يراها يوسف في صغره، ثم ابتلاءات متتابعة بين البئر والبيت والسجن، حتى يجتمع شمل الأسرة من جديد. نتتبعها هنا فصلًا فصلًا مع الآيات من المصحف الموثّق.",
     surahs: [12],
     accent: "olive",
-    isDemo: true,
-    reviewState: "draft",
+    isDemo: false,
+    reviewState: "published",
     references: REFS,
     videoIds: ["v-yusuf-journey"],
     chapters: [
@@ -75,23 +78,15 @@ export const STORIES: Story[] = [
       "فتية مؤمنون يعتزلون قومهم ويلجؤون إلى كهف، فيلبثون فيه زمنًا طويلًا ثم يستيقظون. تُروى قصتهم في مطلع سورة الكهف.",
     surahs: [18],
     accent: "forest",
-    isDemo: true,
-    reviewState: "draft",
-    references: [
-      ...REFS,
-      {
-        id: "twinkl:qst-ashab-alkhf",
-        title: "قصة أصحاب الكهف",
-        publisher: "Twinkl",
-        url: "https://www.twinkl.com.eg/teaching-wiki/qst-ashab-alkhf",
-      },
-    ],
+    isDemo: false,
+    reviewState: "published",
+    references: REFS,
     videoIds: ["v-kahf-cave"],
     chapters: [
       ch("ashab-al-kahf", 1, "اللجوء إلى الكهف", "تبدأ القصة بالفتية وهم يلجؤون إلى الكهف داعين ربهم، ثم يغشاهم نوم طويل.", 18, 9, 12),
       ch("ashab-al-kahf", 2, "إيمان الفتية", "تفصيل خبرهم: إيمانهم، وثباتهم أمام قومهم، وقرارهم اعتزالهم.", 18, 13, 16),
       ch("ashab-al-kahf", 3, "في الكهف ثم اليقظة", "يُصوَّر حالهم داخل الكهف، ثم يستيقظون ويتساءلون عن مدة بقائهم.", 18, 17, 20),
-      ch("ashab-al-kahf", 4, "انكشاف أمرهم", "يطّلع الناس على أمرهم، ويختلفون في عددهم ومدة بقائهم.", 18, 21, 26),
+      ch("ashab-al-kahf", 4, "انكشاف أمرهم", "يطّلع الناس على أمرهم ويتنازعون في شأنهم، ويُذكر اختلافهم في عددهم، ثم تبيّن الآيات مدة لبثهم: ثلاثمائة سنة وتسع سنين، مع الأمر بتفويض العلم بها إلى الله. وفي الآيتين ٢٣–٢٤ توجيه للرسول ﷺ في شأن المشيئة، وليستا من سرد القصة.", 18, 21, 26),
     ],
   },
   {
@@ -101,22 +96,14 @@ export const STORIES: Story[] = [
     intro: "يرحل موسى عليه السلام مع فتاه ليلقى رجلًا صالحًا أعطاه الله علمًا، فيصحبه في رحلة من ثلاثة مواقف.",
     surahs: [18],
     accent: "sand",
-    isDemo: true,
-    reviewState: "draft",
-    references: [
-      ...REFS,
-      {
-        id: "islamweb:library:59-61",
-        title: "قصة موسى والخضر عليهما الصلاة والسلام",
-        publisher: "إسلام ويب — من كتاب «البداية والنهاية» لابن كثير",
-        url: "https://www.islamweb.net/ar/library/content/59/61/%D9%82%D8%B5%D8%A9-%D9%85%D9%88%D8%B3%D9%89-%D9%88%D8%A7%D9%84%D8%AE%D8%B6%D8%B1-%D8%B9%D9%84%D9%8A%D9%87%D9%85%D8%A7-%D8%A7%D9%84%D8%B5%D9%84%D8%A7%D8%A9-%D9%88%D8%A7%D9%84%D8%B3%D9%84%D8%A7%D9%85",
-      },
-    ],
+    isDemo: false,
+    reviewState: "published",
+    references: REFS,
     videoIds: ["v-musa-khidr"],
     chapters: [
       ch("musa-wal-khidr", 1, "الرحلة", "يعزم موسى على الرحلة مع فتاه، وتكون علامة الموضع المقصود فَقْدَ الحوت.", 18, 60, 64),
-      ch("musa-wal-khidr", 2, "اللقاء والشرط", "يلقى موسى الرجل الصالح ويطلب صحبته ليتعلّم، فيشترط عليه الصبر وترك السؤال حتى يبيّن له.", 18, 65, 70),
-      ch("musa-wal-khidr", 3, "ثلاثة مواقف", "السفينة، ثم الغلام، ثم الجدار — وفي كل موقف يعترض موسى.", 18, 71, 77),
+      ch("musa-wal-khidr", 2, "اللقاء والشرط", "يلقى موسى الرجل الصالح ويطلب صحبته ليتعلّم، فيقول له الخضر إنه لن يستطيع الصبر معه، ويعده موسى بالصبر، فيشترط عليه ألا يسأله عن شيء حتى يبيّن له بنفسه.", 18, 65, 70),
+      ch("musa-wal-khidr", 3, "ثلاثة مواقف", "السفينة، ثم الغلام، ثم الجدار: ينكر موسى خرق السفينة وقتل الغلام، وعند الجدار يعلّق بأنه كان يمكن أخذ أجر على ذلك العمل.", 18, 71, 77),
       ch("musa-wal-khidr", 4, "التأويل", "يفترقان، ويبيّن الرجل الصالح لموسى أسباب ما فعل.", 18, 78, 82),
     ],
   },
@@ -127,20 +114,12 @@ export const STORIES: Story[] = [
     intro: "ملك أعطاه الله قوة وسلطانًا، تُروى رحلاته إلى أقصى المغرب وأقصى المشرق ثم بناؤه السدّ، في أواخر سورة الكهف.",
     surahs: [18],
     accent: "olive",
-    isDemo: true,
-    reviewState: "draft",
-    references: [
-      ...REFS,
-      {
-        id: "islamweb:fatwa:107028",
-        title: "قصة ذي القرنين كما وردت في سورة الكهف",
-        publisher: "إسلام ويب — مركز الفتوى",
-        url: "https://www.islamweb.net/ar/fatwa/107028/%D9%82%D8%B5%D8%A9-%D8%B0%D9%8A-%D8%A7%D9%84%D9%82%D8%B1%D9%86%D9%8A%D9%86-%D9%83%D9%85%D8%A7-%D9%88%D8%B1%D8%AF%D8%AA-%D9%81%D9%8A-%D8%B3%D9%88%D8%B1%D8%A9-%D8%A7%D9%84%D9%83%D9%87%D9%81",
-      },
-    ],
+    isDemo: false,
+    reviewState: "published",
+    references: REFS,
     videoIds: ["v-dhul-qarnayn"],
     chapters: [
-      ch("dhul-qarnayn", 1, "نحو المغرب", "يُذكر ما أُعطيه ذو القرنين، ثم وصوله إلى أقصى المغرب وحكمه في القوم الذين وجدهم هناك.", 18, 83, 88),
+      ch("dhul-qarnayn", 1, "نحو المغرب", "يُذكر ما أُعطيه ذو القرنين، ثم وصوله إلى مغرب الشمس ووجوده قومًا هناك، ويُخيَّر في أمرهم، ثم يبيّن ما سيفعله بمن ظلم منهم وبمن آمن.", 18, 83, 88),
       ch("dhul-qarnayn", 2, "نحو المشرق", "تمضي الرحلة إلى أقصى المشرق، حيث يجد قومًا آخرين.", 18, 89, 91),
       ch("dhul-qarnayn", 3, "بناء السدّ", "يطلب منه قوم أن يبني حاجزًا يحميهم من يأجوج ومأجوج، فيبنيه ويردّ الفضل إلى ربه.", 18, 92, 98),
     ],
@@ -152,17 +131,9 @@ export const STORIES: Story[] = [
     intro: "تعتزل مريم أهلها فتأتيها البشارة، ثم يولد عيسى عليه السلام ويتكلم وهو رضيع. تُروى في سورة مريم.",
     surahs: [19],
     accent: "terracotta",
-    isDemo: true,
-    reviewState: "draft",
-    references: [
-      ...REFS,
-      {
-        id: "islamweb:article:175527",
-        title: "قصة مريم عليها السلام في القرآن",
-        publisher: "إسلام ويب",
-        url: "https://www.islamweb.net/ar/article/175527/%D9%82%D8%B5%D8%A9-%D9%85%D8%B1%D9%8A%D9%85-%D8%B9%D9%84%D9%8A%D9%87%D8%A7-%D8%A7%D9%84%D8%B3%D9%84%D8%A7%D9%85-%D9%81%D9%8A-%D8%A7%D9%84%D9%82%D8%B1%D8%A2%D9%86",
-      },
-    ],
+    isDemo: false,
+    reviewState: "published",
+    references: REFS,
     videoIds: ["v-maryam-story", "v-maryam-story-2", "v-maryam-narrated"],
     chapters: [
       ch("maryam", 1, "البشارة", "تعتزل مريم أهلها، فيأتيها رسول من الله في هيئة بشر ويبشّرها بغلام.", 19, 16, 21),
@@ -175,20 +146,12 @@ export const STORIES: Story[] = [
     slug: "zakariya-yahya",
     title: "زكريا ويحيى عليهما السلام",
     subtitle: "دعاء في الخفاء وبشارة",
-    intro: "يدعو زكريا ربه في خفاء وقد تقدّمت به السنّ، فيُبشَّر بيحيى. بها تُفتتح سورة مريم.",
+    intro: "يدعو زكريا ربه في خفاء وقد تقدّمت به السنّ، فيُبشَّر بيحيى. تأتي قصة زكريا ويحيى في مطلع سورة مريم.",
     surahs: [19],
     accent: "sand",
-    isDemo: true,
-    reviewState: "draft",
-    references: [
-      ...REFS,
-      {
-        id: "islamweb:library:59-86",
-        title: "قصة زكريا ويحيى عليهما السلام كما حكاها القرآن",
-        publisher: "إسلام ويب — من كتاب «البداية والنهاية» لابن كثير",
-        url: "https://www.islamweb.net/ar/library/content/59/86/%D9%82%D8%B5%D8%AA%D9%87%D9%85%D8%A7-%D9%83%D9%85%D8%A7-%D8%AD%D9%83%D8%A7%D9%87%D8%A7-%D8%A7%D9%84%D9%82%D8%B1%D8%A2%D9%86",
-      },
-    ],
+    isDemo: false,
+    reviewState: "published",
+    references: REFS,
     videoIds: ["v-zakariya"],
     chapters: [
       ch("zakariya-yahya", 1, "دعاء زكريا", "يدعو زكريا ربه أن يهبه ولدًا صالحًا، مع كِبَر سنّه.", 19, 2, 6),

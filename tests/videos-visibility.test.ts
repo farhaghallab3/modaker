@@ -42,15 +42,13 @@ test("the approved records keep their YouTube IDs and our editorial titles (not 
   }
 });
 
-test("videos are published independently of stories: all six story narratives stay draft, demo and hidden", () => {
+test("video publication is independent of story publication: exactly 4 of 15 published, whatever the stories' state", () => {
   assert.equal(STORIES.length, 6);
-  for (const s of STORIES) {
-    assert.equal(s.isDemo, true, s.slug);
-    assert.equal(s.reviewState, "draft", s.slug);
-    assert.equal(getStory(s.slug), undefined, s.slug);
-  }
-  assert.deepEqual(visibleStories(), []);
-  assert.deepEqual(storiesForSurah(18), []);
+  assert.equal(visibleVideos().length, 4);
+  assert.equal(VIDEOS.filter((v) => v.isDemo && v.reviewState === "draft").length, 11);
+  // a story is visible on its own flags, a video on its own
+  assert.equal(visibleStories().length, 6);
+  assert.deepEqual(storiesForSurah(18).map((s) => s.slug).sort(), ["ashab-al-kahf", "dhul-qarnayn", "musa-wal-khidr"]);
 });
 
 test("story text does not leak through the video records", () => {
@@ -62,8 +60,8 @@ test("story text does not leak through the video records", () => {
   }
 });
 
-test("the Videos page's story link needs a visible story: hidden stories are never linked (getStory is undefined)", () => {
-  for (const v of visibleVideos()) if (v.storySlug) assert.equal(getStory(v.storySlug), undefined, `${v.id} → ${v.storySlug}`);
+test("the Videos page's story link needs a visible story: it only points at stories that are published", () => {
+  for (const v of visibleVideos()) if (v.storySlug) assert.ok(getStory(v.storySlug), `${v.id} → ${v.storySlug} is a visible story`);
 });
 
 test("surah screens show the approved videos where expected, through videosForSurah, independently of story visibility", () => {

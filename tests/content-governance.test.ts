@@ -31,9 +31,13 @@ const plain = { id: "u-plain", role: "user" as const };
 /** The only videos reviewed and approved so far (supplementary external viewing; see tests/videos-visibility.test.ts). */
 const APPROVED_VIDEOS = ["v-mulk-fadl", "v-dhul-qarnayn", "v-musa-khidr", "v-qabil-habil"];
 
-test("every seeded story, and every video except the explicitly approved ones, is demo AND draft — never published by default", () => {
+test("every video except the explicitly approved ones is demo AND draft; the six reviewed stories are published", () => {
   assert.ok(STORIES.length >= 6 && VIDEOS.length >= 1);
-  for (const x of [...STORIES, ...VIDEOS.filter((v) => !APPROVED_VIDEOS.includes(v.id))]) {
+  for (const s of STORIES) {
+    assert.equal(s.isDemo, false, s.slug);
+    assert.equal(s.reviewState, "published", s.slug);
+  }
+  for (const x of VIDEOS.filter((v) => !APPROVED_VIDEOS.includes(v.id))) {
     assert.equal(x.isDemo, true, "seed content is demo");
     assert.equal(x.reviewState, "draft", "seed content is unreviewed");
     assert.equal(isAssistantEligible(x), false, "the assistant never treats it as knowledge");
