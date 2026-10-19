@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Amiri, IBM_Plex_Sans_Arabic } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
+import type { ComponentProps } from "react";
+import { arSA } from "@clerk/localizations/ar-SA";
+import { clerkEnabled } from "@/lib/auth/clerk-config";
 import { AppProvider } from "@/lib/store/AppProvider";
 import { BRAND, BRAND_ASSETS } from "@/lib/brand";
 import { DEFAULT_LOCALE, localeConfig } from "@/lib/i18n";
@@ -63,6 +67,24 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+/** Clerk's sign-in/up cards in مُدّكِر's palette and type. */
+const CLERK_APPEARANCE: NonNullable<ComponentProps<typeof ClerkProvider>["appearance"]> = {
+  variables: {
+    colorPrimary: "#283618",
+    colorPrimaryForeground: "#fefae0",
+    colorDanger: "#bc6c25",
+    colorBackground: "#fffdf6",
+    colorForeground: "#1d2218",
+    colorMutedForeground: "#74776c",
+    colorInput: "#ffffff",
+    colorInputForeground: "#1d2218",
+    colorBorder: "#e7e3d3",
+    colorRing: "#606c38",
+    fontFamily: "var(--font-plex), 'IBM Plex Sans Arabic', system-ui, sans-serif",
+    borderRadius: "0.9rem",
+  },
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const { lang, dir } = localeConfig[DEFAULT_LOCALE];
   return (
@@ -78,7 +100,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           تخطَّ إلى المحتوى
         </a>
-        <AppProvider>{children}</AppProvider>
+        {clerkEnabled ? (
+          <ClerkProvider
+            localization={arSA}
+            appearance={CLERK_APPEARANCE}
+            signInUrl="/login"
+            signUpUrl="/register"
+            afterSignOutUrl="/"
+          >
+            <AppProvider>{children}</AppProvider>
+          </ClerkProvider>
+        ) : (
+          <AppProvider>{children}</AppProvider>
+        )}
       </body>
     </html>
   );

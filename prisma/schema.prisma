@@ -18,7 +18,11 @@ generator client {
 
 datasource db {
   provider   = "postgresql"
+  /// Neon: the POOLED connection string (host contains "-pooler") — used by the running app.
   url        = env("DATABASE_URL")
+  /// Neon: the direct (unpooled) connection string — used by `prisma migrate`.
+  /// Same name the Neon ↔ Vercel integration uses.
+  directUrl  = env("DATABASE_URL_UNPOOLED")
   extensions = [vector]
 }
 
@@ -186,7 +190,10 @@ enum PushPlatform {
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
-  passwordHash String
+  /// Legacy password accounts only; sign-in is handled by Clerk (Google + email).
+  passwordHash String?
+  /// Clerk user id ("user_…"); set the first time a Clerk-authenticated user reaches the API.
+  clerkId      String?  @unique
   role         Role     @default(user)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

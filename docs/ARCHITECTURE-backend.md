@@ -110,7 +110,9 @@ npm run quran:cache             # optional: data/quran/*.json for QURAN_PROVIDER
 ## 2. REST API (`/api/v1`)
 
 All responses are JSON. Every error is `{ "error": "<Arabic, user-facing>", "code": "<stable id>" }`.
-Auth = signed `mz_session` cookie (httpOnly). "opt" = works signed out; signed-in
+Auth = Clerk session (sign-in with Google or email at `/login` and `/register`; Clerk verifies the
+email). `requireSession()` asks Clerk who is signed in and maps the Clerk user to our `User` row by
+`clerkId`, creating it on first sight (src/server/auth/clerk.ts). "opt" = works signed out; signed-in
 users additionally get history saved.
 
 | Method | Path | Auth | Request | Response |
@@ -126,9 +128,6 @@ users additionally get history saved.
 | GET | `/notifications/preferences` | ✓ | – | `NotificationPreferences & { timeZone }` |
 | PUT | `/notifications/preferences` | ✓ | `NotificationPreferences & { timeZone? }` | same as GET |
 | GET/POST | `/cron/reminders` | Bearer `CRON_SECRET` | – | `{ ok, reminders: SweepStats, recordingsPurged, sessionsPurged }` |
-| POST | `/auth/register` | – | `{ email, password ≥ 8, name? }` | `201 { user: { id, email } }` + cookie |
-| POST | `/auth/login` | – | `{ email, password }` | `{ user }` + cookie |
-| POST | `/auth/logout` | – | – | `{ ok: true }`, cookie cleared |
 | GET | `/me` | ✓ | – | `{ user: { id, email, createdAt }, profile }` |
 | DELETE | `/me` | ✓ | – | `{ ok: true }` — account + all data deleted |
 | GET | `/me/state` | ✓ | – | `UserState` |

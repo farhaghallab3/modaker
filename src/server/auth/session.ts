@@ -92,18 +92,19 @@ export async function createSession(userId: string, userAgent?: string | null): 
   return { token: signSessionToken(row.id, expiresAt), expiresAt };
 }
 
-/** Resolve the request's session, or null. Never throws for bad cookies. */
-export async function getSession(req: Request): Promise<Session | null> {
-  const token = readCookie(req, SESSION_COOKIE);
-  if (!token) return null;
-  const parsed = verifySessionToken(token);
-  if (!parsed) return null;
-  const { hasDatabase, getPrisma } = await import("../db");
-  if (!hasDatabase()) return null;
-  const prisma = await getPrisma();
-  const row = await prisma.session.findUnique({ where: { id: parsed.sessionId } });
-  if (!row || row.expiresAt.getTime() <= Date.now()) return null;
-  return { userId: row.userId, sessionId: row.id, expiresAt: row.expiresAt };
+/**
+ * Resolve the request's signed-in user, or null.
+ * Identity comes from Clerk (Google + email); `userId` is our local User id, linked by clerkId.
+ * The request argument is kept for the route handlers' existing call sites — Clerk reads the
+ * request context itself (set up by clerkMiddleware in src/middleware.ts).
+ */
+export async function getSession(_req: Request): Promise<Session | null> {
+  const { currentClerkUser, localUserIdFor } = await import("./clerk");
+  const clerk = await currentClerkUser();
+  if (!clerk) return null;
+  const userId = await localUserIdFor(clerk.clerkId);
+  if (!userId) return null;
+  return { userId, sessionId: clerk.sessionId ?? clerk.clerkId, expiresAt: new Date(Date.now() + SESSION_TTL_MS) };
 }
 
 /** Like getSession but throws 401 (or 503 when there is no database). */

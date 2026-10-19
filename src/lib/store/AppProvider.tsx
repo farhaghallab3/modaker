@@ -3,9 +3,15 @@
 /**
  * Client application state. Screens read state + call intent-named actions;
  * persistence is delegated to a UserDataRepository (local demo or API).
+ *
+ * Who is signed in comes from Clerk (Google + email): <ClerkBridge> reports the Clerk user and
+ * the provider switches `state` to that account's progress. Without Clerk keys nobody can sign
+ * in, but the demo still works.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useClerk, useUser } from "@clerk/nextjs";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { buildDemoState } from "@/content/demo-seed";
+import { clerkEnabled } from "@/lib/auth/clerk-config";
 import { getSurahMeta } from "@/lib/quran/surahs";
 import { declareMemorized } from "@/lib/review/learning";
 import type {
@@ -17,13 +23,7 @@ import type {
   ResumePoint,
   UserProfile,
 } from "@/lib/types";
-import {
-  createDeviceAccount,
-  hasDeviceAccount,
-  removeDeviceAccount,
-  saveDeviceAccountState,
-  verifyDeviceAccount,
-} from "./device-accounts";
+import { loadDeviceState, removeDeviceAccount, saveDeviceAccountState } from "./device-accounts";
 import { createRepository, isApiMode } from "./repository";
 import { applyMarkMemorized, applyRecitation } from "./reducers";
 import { EMPTY_STATE, todayKey, uid, type Goals, type PrivacySettings, type UserState } from "./state";
@@ -40,8 +40,6 @@ export interface OnboardingInput {
 }
 
 interface Actions {
-  register(input: { name: string; email: string; password: string }): Promise<void>;
-  signIn(input: { email: string; password: string }): Promise<void>;
   signOut(): Promise<void>;
   startDemo(): void;
   completeOnboarding(input: OnboardingInput): void;
@@ -67,10 +65,66 @@ interface Ctx {
 
 const AppContext = createContext<Ctx | null>(null);
 
+interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+}
+
+interface AuthSnapshot {
+  /** false until Clerk has said whether someone is signed in. */
+  loaded: boolean;
+  user: AuthUser | null;
+}
+
+function newProfile(u: AuthUser): UserProfile {
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    level: "beginner",
+    memorizedAmount: "none",
+    dailyTargetAyahs: 5,
+    reviewSessionsPerDay: 2,
+    reminderTime: "05:30",
+    locale: "ar",
+    createdAt: new Date().toISOString(),
+    onboarded: false,
+  };
+}
+
+/** Reports the Clerk user to the provider, and hands it Clerk's sign-out. */
+function ClerkBridge({
+  onChange,
+  signOutRef,
+}: {
+  onChange: (a: AuthSnapshot) => void;
+  signOutRef: MutableRefObject<(() => Promise<void>) | null>;
+}) {
+  const { isLoaded, isSignedIn, user } = useUser();
+  const clerk = useClerk();
+  signOutRef.current = () => clerk.signOut();
+  const email = user?.primaryEmailAddress?.emailAddress?.trim().toLowerCase() ?? "";
+  const name = user?.fullName?.trim() || user?.firstName?.trim() || "";
+  const id = user?.id ?? "";
+  useEffect(() => {
+    if (!isLoaded) return;
+    onChange({ loaded: true, user: isSignedIn && id && email ? { id, email, name } : null });
+  }, [isLoaded, isSignedIn, id, email, name, onChange]);
+  return null;
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const repo = useRef(createRepository());
   const [state, setState] = useState<UserState>(EMPTY_STATE);
-  const [ready, setReady] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [auth, setAuth] = useState<AuthSnapshot>({ loaded: !clerkEnabled, user: null });
+  const clerkSignOut = useRef<(() => Promise<void>) | null>(null);
+  /** The account (email, or null when signed out) whose progress `state` currently reflects. */
+  const [syncedFor, setSyncedFor] = useState<string | null | undefined>(undefined);
+  // Ready only once the state belongs to whoever Clerk says is signed in — otherwise route guards
+  // would briefly see "signed out" right after a sign-in and bounce the user back to /login.
+  const ready = loaded && auth.loaded && syncedFor === (auth.user?.email ?? null);
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -82,15 +136,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (alive && s) setState(s);
       })
       .catch(() => {})
-      .finally(() => alive && setReady(true));
+      .finally(() => alive && setLoaded(true));
     return () => {
       alive = false;
     };
   }, []);
 
+  // Follow Clerk: switch to the signed-in account's progress, or sign the account out locally.
+  useEffect(() => {
+    if (!loaded || !auth.loaded) return;
+    const u = auth.user;
+    if (u && isApiMode()) {
+      if (stateRef.current.session?.email === u.email && !stateRef.current.demo) {
+        setSyncedFor(u.email);
+        return;
+      }
+      // Progress lives on the server (identified by Clerk). Never seed an empty state over it.
+      repo.current
+        .load()
+        .then((s) => s && setState({ ...s, demo: false, profile: s.profile ?? newProfile(u) }))
+        .catch(() => {})
+        .finally(() => setSyncedFor(u.email));
+      return;
+    }
+    setState((s) => {
+      if (u) {
+        if (!s.demo && s.session?.email === u.email) return s; // already this account
+        const saved = loadDeviceState(u.email);
+        const base = saved ?? (!s.demo && s.profile?.email === u.email ? s : EMPTY_STATE);
+        return {
+          ...base,
+          demo: false,
+          session: { userId: u.id, email: u.email },
+          profile: base.profile ? { ...base.profile, email: u.email } : newProfile(u),
+        };
+      }
+      // Signed out: drop the account's session; the demo stays usable.
+      if (s.session && !s.demo) return isApiMode() ? EMPTY_STATE : { ...s, session: null };
+      return s;
+    });
+    setSyncedFor(u?.email ?? null);
+  }, [loaded, auth]);
+
   // persist after every change once loaded
   useEffect(() => {
     if (!ready) return;
+    if (isApiMode() && !state.session) return; // nothing to save to while signed out
     void repo.current.save(state);
     if (!isApiMode()) saveDeviceAccountState(state); // each device account keeps its own copy
   }, [state, ready]);
@@ -99,83 +190,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const actions = useMemo<Actions>(
     () => ({
-      async register({ name, email, password }) {
-        // Real API first; fall back to a device-only account when no backend is configured.
-        const res = await fetch("/api/v1/auth/register", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ name, email, password }),
-        }).catch(() => null);
-        if (res && !res.ok && res.status !== 503 && res.status !== 404) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.error ?? "تعذّر إنشاء الحساب");
-        }
-        const deviceOnly = !res?.ok;
-        if (deviceOnly && hasDeviceAccount(email)) throw new Error("هذا البريد مسجّل مسبقًا. سجّل الدخول بدلًا من إنشاء حساب جديد.");
-        const userId = res?.ok ? ((await res.json()).user?.id ?? uid("u")) : uid("local");
-        if (deviceOnly) await createDeviceAccount(email, userId, password, null);
-        update(() => ({
-          ...EMPTY_STATE,
-          session: { userId, email },
-          profile: {
-            id: userId,
-            name,
-            email,
-            level: "beginner",
-            memorizedAmount: "none",
-            dailyTargetAyahs: 5,
-            reviewSessionsPerDay: 2,
-            reminderTime: "05:30",
-            locale: "ar",
-            createdAt: new Date().toISOString(),
-            onboarded: false,
-          },
-        }));
-      },
-      async signIn({ email, password }) {
-        const res = await fetch("/api/v1/auth/login", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        }).catch(() => null);
-        if (res && res.status === 401) throw new Error("البريد الإلكتروني أو كلمة المرور غير صحيحة");
-        if (res && !res.ok) {
-          // Only "no database on this server" falls back to a device-only account;
-          // any other failure (rate limit, server error) is shown, never treated as a sign-in.
-          const body = await res.json().catch(() => ({}));
-          if (body.code !== "no_database") throw new Error(body.error ?? "تعذّر تسجيل الدخول، حاول مرة أخرى.");
-        }
-        if (res?.ok) {
-          // Real account: adopt the server's saved state. Never seed an empty state here —
-          // the autosave effect would overwrite the user's stored progress with it.
-          const user = (await res.json().catch(() => ({}))).user as { id?: string; email?: string } | undefined;
-          const loaded = await repo.current.load().catch(() => null);
-          if (!loaded && isApiMode()) throw new Error("تعذّر تحميل بياناتك. حاول مرة أخرى.");
-          const session = { userId: user?.id ?? uid("local"), email };
-          if (isApiMode()) setState({ ...loaded!, session });
-          // Device copy: keep it only if it belongs to this account (it is stored signed-out after logout).
-          else setState(loaded && !loaded.demo && loaded.profile?.email === email ? { ...loaded, session } : { ...EMPTY_STATE, session });
-          return;
-        }
-        // Device-only account (no database on the server): recognise the email and check the password.
-        const account = await verifyDeviceAccount(email, password);
-        if (account) {
-          setState({ ...(account.state ?? EMPTY_STATE), demo: false, session: { userId: account.userId, email } });
-          return;
-        }
-        if (hasDeviceAccount(email)) throw new Error("البريد الإلكتروني أو كلمة المرور غير صحيحة");
-        // An account created on this device before accounts were stored per email: adopt it once.
-        const legacy = await repo.current.load().catch(() => null);
-        if (legacy && !legacy.demo && legacy.profile?.email === email) {
-          const userId = legacy.session?.userId ?? legacy.profile.id ?? uid("local");
-          await createDeviceAccount(email, userId, password, { ...legacy, session: null });
-          setState({ ...legacy, session: { userId, email } });
-          return;
-        }
-        throw new Error("لا يوجد حساب بهذا البريد الإلكتروني. أنشئ حسابًا أولًا.");
-      },
       async signOut() {
-        await fetch("/api/v1/auth/logout", { method: "POST" }).catch(() => null);
+        await clerkSignOut.current?.().catch(() => null);
         // With a server account, drop the in-memory copy so the next person on this device never sees it.
         update((s) => (isApiMode() ? EMPTY_STATE : { ...s, session: null }));
       },
@@ -269,6 +285,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await repo.current.clear();
         await fetch("/api/v1/me", { method: "DELETE" }).catch(() => null);
         if (email) removeDeviceAccount(email);
+        await clerkSignOut.current?.().catch(() => null);
         setState(EMPTY_STATE);
       },
     }),
@@ -276,7 +293,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(() => ({ state, ready, actions }), [state, ready, actions]);
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={value}>
+      {clerkEnabled ? <ClerkBridge onChange={setAuth} signOutRef={clerkSignOut} /> : null}
+      {children}
+    </AppContext.Provider>
+  );
 }
 
 export function useApp() {
