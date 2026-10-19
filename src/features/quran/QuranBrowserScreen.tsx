@@ -80,7 +80,16 @@ export function QuranBrowserScreen() {
 
   return (
     <Page>
-      <PageHeader eyebrow="المصحف" title="سور القرآن الكريم" description="اختر سورة لتقرأها أو تحفظها أو تتأمل معانيها." />
+      <PageHeader
+        eyebrow="المصحف"
+        title="سور القرآن الكريم"
+        description="اختر سورة لتقرأها أو تحفظها أو تتأمل معانيها."
+        actions={
+          <ButtonLink href="/mushaf" variant="secondary" icon="mushaf">
+            اقرأ في المصحف
+          </ButtonLink>
+        }
+      />
 
       {resume && resumeMeta ? (
         <section

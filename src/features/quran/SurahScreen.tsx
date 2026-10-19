@@ -1,5 +1,6 @@
 "use client";
 
+import { pageForSurah } from "@/lib/quran/mushaf";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Page } from "@/components/layout/PageHeader";
@@ -137,6 +138,9 @@ function SurahView({ meta }: { meta: SurahMeta }) {
           )}
           <ButtonLink href={reciteHref} variant="secondary" icon="mic" className="flex-1 sm:flex-none">
             سمّع
+          </ButtonLink>
+          <ButtonLink href={`/mushaf/${pageForSurah(n)}`} variant="secondary" icon="mushaf" className="flex-1 sm:flex-none">
+            اقرأ في المصحف
           </ButtonLink>
           <p className="w-full sm:w-auto sm:ms-auto self-center text-xs text-muted">
             {prog.memorized

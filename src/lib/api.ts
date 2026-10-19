@@ -5,6 +5,7 @@
  * the contract for the future mobile app — see docs/ARCHITECTURE.md §5.
  */
 import { useCallback, useEffect, useState } from "react";
+import type { MushafPage } from "@/lib/quran/mushaf";
 import type {
   AssistantAnswer,
   AyahRange,
@@ -37,6 +38,7 @@ const BASE = "/api/v1";
 
 export const api = {
   surah: (n: number) => fetch(`${BASE}/quran/surahs/${n}`).then((r) => json<SurahText>(r)),
+  mushafPage: (n: number) => fetch(`${BASE}/quran/pages/${n}`).then((r) => json<MushafPage>(r)),
   tafsir: (n: number, source = "muyassar") =>
     fetch(`${BASE}/quran/surahs/${n}/tafsir?source=${source}`).then((r) => json<{ entries: TafsirEntry[]; source: SourceRef }>(r)),
   transcribe: (audio: Blob, range: AyahRange) => {

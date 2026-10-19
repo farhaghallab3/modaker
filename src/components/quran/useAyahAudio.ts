@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { reciterAudioUrl, useReciter } from "@/lib/quran/reciters";
 import type { Ayah } from "@/lib/types";
 
 /**
  * Sequential ayah audio with per-ayah and per-range repeat.
  * One <audio> element; ayahs play in order; `repeatEach` repeats each ayah
  * N times before moving on; `repeatRange` loops the whole range N times.
+ * The voice is the learner's chosen reciter (src/lib/quran/reciters.ts); switching reciter while
+ * an ayah plays restarts that ayah in the new voice.
  */
 export function useAyahAudio(ayahs: Ayah[]) {
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -16,6 +19,7 @@ export function useAyahAudio(ayahs: Ayah[]) {
   const [repeatEach, setRepeatEach] = useState(1);
   const [repeatRange, setRepeatRange] = useState(1);
   const counters = useRef({ each: 0, range: 0, stopAfterOne: false });
+  const reciter = useReciter();
 
   useEffect(() => {
     const el = new Audio();
@@ -31,13 +35,13 @@ export function useAyahAudio(ayahs: Ayah[]) {
     (i: number) => {
       const el = audio.current;
       const a = ayahs[i];
-      if (!el || !a?.audioUrl) {
+      if (!el || !a) {
         setError(true);
         return;
       }
       setError(false);
       setCurrent(i);
-      el.src = a.audioUrl;
+      el.src = reciterAudioUrl(reciter, a.surah, a.ayah);
       el.play()
         .then(() => setPlaying(true))
         .catch(() => {
@@ -45,8 +49,17 @@ export function useAyahAudio(ayahs: Ayah[]) {
           setError(true);
         });
     },
-    [ayahs],
+    [ayahs, reciter],
   );
+
+  // A new reciter while an ayah is playing: continue from the same ayah in the new voice.
+  const lastReciter = useRef(reciter.id);
+  useEffect(() => {
+    if (lastReciter.current === reciter.id) return;
+    lastReciter.current = reciter.id;
+    if (playing && current != null) playIndex(current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reciter.id]);
 
   useEffect(() => {
     const el = audio.current;

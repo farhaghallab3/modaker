@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { cn, Segmented } from "@/components/ui/primitives";
+import { RECITERS, reciterLabel, setReciterId, useReciter } from "@/lib/quran/reciters";
 import { toArabicDigits } from "@/lib/quran/surahs";
 import type { Ayah } from "@/lib/types";
 import type { useAyahAudio } from "./useAyahAudio";
@@ -35,7 +36,8 @@ export function AudioPlayer({
   const [open, setOpen] = useState(defaultOpen);
   const settingsId = useId();
   const cur = audio.current != null ? ayahs[audio.current] : null;
-  const hasAudio = ayahs.some((a) => a.audioUrl);
+  const hasAudio = ayahs.length > 0;
+  const reciter = useReciter();
 
   function toggle() {
     if (audio.playing) audio.pause();
@@ -77,7 +79,9 @@ export function AudioPlayer({
         </button>
 
         <div className="min-w-0 flex-1">
-          <p className="text-[0.7rem] text-muted">{title}</p>
+          <p className="text-[0.7rem] text-muted truncate">
+            {title} · {reciterLabel(reciter)}
+          </p>
           <p className={cn("text-sm font-medium truncate", audio.error ? "text-terracotta" : "text-forest")} aria-live="polite">
             {status}
             {cur && ayahs.length > 1 ? (
@@ -112,7 +116,7 @@ export function AudioPlayer({
           )}
         >
           <Icon name="repeat" size={16} />
-          <span className="hidden sm:inline">التكرار</span>
+          <span className="hidden sm:inline">القارئ والتكرار</span>
           {audio.repeatEach > 1 || audio.repeatRange > 1 ? (
             <span className="num">
               {toArabicDigits(audio.repeatEach)}×{audio.repeatRange > 1 ? ` · ${toArabicDigits(audio.repeatRange)}↺` : ""}
@@ -134,6 +138,7 @@ export function AudioPlayer({
       ) : null}
 
       <div id={settingsId} hidden={!open} className="mt-3 grid gap-3 sm:grid-cols-2 border-t hairline pt-3">
+        <ReciterSelect className="sm:col-span-2" />
         <div className="flex items-center justify-between gap-3 sm:justify-start">
           <span className="text-xs text-muted">كرّر كل آية</span>
           <Segmented
@@ -156,5 +161,30 @@ export function AudioPlayer({
         </div>
       </div>
     </section>
+  );
+}
+
+/** Choose the reciter; the choice is remembered on this device and used by every player. */
+export function ReciterSelect({ className }: { className?: string }) {
+  const reciter = useReciter();
+  const id = useId();
+  return (
+    <div className={cn("flex items-center justify-between gap-3 sm:justify-start", className)}>
+      <label htmlFor={id} className="text-xs text-muted shrink-0">
+        القارئ
+      </label>
+      <select
+        id={id}
+        value={reciter.id}
+        onChange={(e) => setReciterId(e.target.value)}
+        className="h-9 min-w-0 flex-1 sm:flex-none rounded-xl bg-white px-3 text-sm text-forest ring-1 ring-inset ring-line focus:outline-none focus:ring-2 focus:ring-olive"
+      >
+        {RECITERS.map((r) => (
+          <option key={r.id} value={r.id}>
+            {reciterLabel(r)}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }

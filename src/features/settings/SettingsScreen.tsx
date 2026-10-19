@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Page, PageHeader } from "@/components/layout/PageHeader";
+import { ReciterSelect } from "@/components/quran/AudioPlayer";
 import { Icon } from "@/components/ui/Icon";
 import { Badge, Button, cn, ConfirmationModal, Field, inputClass, Segmented, Spinner, Toggle } from "@/components/ui/primitives";
 import { useApp } from "@/lib/store/AppProvider";
@@ -130,6 +131,11 @@ export function SettingsScreen() {
       {/* ── Appearance ──────────────────────────────────────────── */}
       <Section title="المظهر" description="الوضع الداكن أريح للعين في القراءة والحفظ ليلًا.">
         <Segmented label="مظهر التطبيق" options={THEMES} value={theme.preference} onChange={theme.setPreference} />
+      </Section>
+
+      {/* ── Reciter ─────────────────────────────────────────────── */}
+      <Section title="القارئ" description="الصوت الذي تُتلى به الآيات في المصحف والحفظ والتسميع.">
+        <ReciterSelect />
       </Section>
 
       {/* ── Reminders ───────────────────────────────────────────── */}
