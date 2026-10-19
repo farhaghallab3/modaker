@@ -59,3 +59,24 @@ export const askSchema = z.object({
     })
     .optional(),
 });
+
+// ── Session Coach input: the facts the device computed (no hrefs, no text, bounded) ─────────────
+const coachRange = z.object({ surah: z.number().int().min(1).max(114), surahName: z.string().max(40), from: z.number().int().min(1).max(286), to: z.number().int().min(1).max(286) });
+const coachActionId = z.enum(["fix-weak", "review", "memorize", "recite", "read"]);
+export const coachInputSchema = z.object({
+  facts: z.object({
+    resume: z.object({ surah: z.number().int().min(1).max(114), surahName: z.string().max(40), ayah: z.number().int().min(1).max(286) }).nullable(),
+    wird: coachRange.nullable(),
+    wirdDone: z.boolean(),
+    memorizedAyahs: z.number().int().min(0).max(6236),
+    due: z.object({ ranges: z.number().int().min(0).max(1000), ayahs: z.number().int().min(0).max(6236), items: z.array(coachRange.extend({ weak: z.boolean() })).max(3) }),
+    weak: z.object({ ayahs: z.number().int().min(0).max(6236), dueRanges: z.number().int().min(0).max(1000), items: z.array(coachRange).max(3) }),
+    lastRecitation: z
+      .object({ daysAgo: z.number().int().min(0).max(3650), range: coachRange, mastered: z.number().int().min(0).max(300), needsReview: z.number().int().min(0).max(300), uncertain: z.number().int().min(0).max(300), practice: z.boolean() })
+      .nullable(),
+    activity: z.object({ activeDaysLast7: z.number().int().min(0).max(7), streakDays: z.number().int().min(0).max(3660), reviewedToday: z.number().int().min(0).max(6236), memorizedToday: z.number().int().min(0).max(6236) }),
+    order: z.enum(["weak-first", "review-first", "memorize-first", "all-clear"]),
+    recommended: z.array(coachActionId).min(1).max(2),
+    actions: z.array(z.object({ id: coachActionId, label: z.string().max(40) })).min(1).max(5),
+  }),
+});

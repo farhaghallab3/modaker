@@ -10,7 +10,7 @@ import { Logo } from "@/components/layout/Logo";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { ButtonLink, ProgressRing } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
-import { DemoButton, LandingHeaderActions } from "./LandingActions";
+import { LandingHeaderActions } from "./LandingActions";
 
 const container = "mx-auto w-full max-w-6xl px-4 sm:px-6";
 
@@ -105,9 +105,6 @@ function Hero() {
               <Icon name="check" size={16} className="text-olive" />
               بلا منافسة ولا ضغط
             </span>
-            <DemoButton variant="quiet" className="-ms-3 sm:hidden">
-              أو جرّب دون حساب
-            </DemoButton>
           </div>
         </div>
 
@@ -457,11 +454,14 @@ function ClosingCta() {
               <ButtonLink href="/register" size="lg" variant="secondary" iconEnd="arrowForward">
                 ابدأ رحلة الحفظ
               </ButtonLink>
-              <DemoButton
+              <ButtonLink
+                href="/login"
                 size="lg"
                 variant="quiet"
                 className="text-cream/85! ring-1 ring-inset ring-cream/25 hover:bg-cream/10! hover:text-cream!"
-              />
+              >
+                لدي حساب
+              </ButtonLink>
             </div>
           </div>
         </div>

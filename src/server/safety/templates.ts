@@ -19,7 +19,7 @@ export interface Template {
 }
 
 /** Identifies the current set of fixed wording; bump together with any template change. */
-export const TEMPLATE_SET_VERSION = "2026-10-06.2";
+export const TEMPLATE_SET_VERSION = "2026-10-07.1";
 
 const t = (id: string, text: string, approval: TemplateApproval, version = 1): Template => ({ id, version, text, approval });
 
@@ -59,6 +59,13 @@ export const TEMPLATES = {
     "pending_scholarly_review",
   ),
 
+  /** Asbab al-nuzul asked, but no approved asbab source is loaded: say so, never repackage tafsir as a reason of revelation. */
+  noAsbabSource: t(
+    "asbab.nosource",
+    "لا يتوفر لدي حاليًا مصدر معتمد لأسباب النزول، فلا أستطيع الجزم بسبب نزول هذه الآية أو متى نزلت. يمكنني أن أشرح لك معناها من التفسير الميسر، أو تراجع كتب أسباب النزول المعتمدة وأهل العلم.",
+    "pending_scholarly_review",
+  ),
+
   quoteCorrection: t("quote.correction", "يبدو أن النص الذي كتبته يختلف عن نص المصحف الموثّق. النص الموثّق هو:", "operational"),
   quoteClarify: t("quote.clarify", "لم أتمكن من تحديد الآية التي تقصدها بدقة، ولا أحب أن أبني على نص غير متأكد منه. هل تقصد إحدى الآيات التالية؟ اكتب السورة ورقم الآية لأعرضها لك.", "operational"),
   quoteContinue: t("quote.continue", "وفيما يلي ما ورد في المصادر المعتمدة عن الآية الموثّقة:", "operational"),
@@ -86,6 +93,8 @@ export const TEMPLATES = {
   extractiveIntro: t("extractive.intro", "إليك ما ورد في المصادر المعتمدة حول سؤالك:", "operational"),
   needsRef: t("needsref", "حدّد السورة ورقم الآية حتى أعرض لك النص من المصحف الموثّق، مثل: «اعرض الآية ٥ من سورة الملك».", "operational"),
   outOfRange: t("range.out", "هذه الآية خارج نطاق السورة المذكورة. تأكد من رقم الآية وأعد المحاولة.", "operational"),
+  /** «هذه الآية» asked while only a surah (no ayah) is known: ask which ayah instead of guessing one. */
+  ayahNeeded: t("ayah.needed", "لم أستطع تحديد الآية التي تقصدها لأن السياق الحالي سورة كاملة. اكتب رقم الآية، مثل: «اشرح لي الآية ٢»، أو افتح الآية في صفحة الحفظ أو التسميع واسأل من هناك.", "operational"),
   quizNeedsSurah: t("quiz.needsurah", "اختر سورة أولًا ثم اطلب الاختبار، مثل: «اختبرني في سورة الملك»، أو افتح السورة في صفحة الحفظ واطلبه من هناك.", "operational"),
   unavailable: t("source.unavailable", "تعذّر الوصول إلى مصدر النصوص الموثّق الآن، فلم أستطع الإجابة. حاول مرة أخرى بعد قليل.", "operational"),
   relatedSources: t("sources.related", "ويمكنك الاطلاع على التفسير المعتمد للآيات المذكورة في المصادر المرفقة.", "operational"),

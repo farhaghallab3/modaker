@@ -26,7 +26,7 @@ const en = (list: string[]) => new RegExp(`\\b(?:${list.map(esc).join("|")})\\b`
 /** The user asks for a ruling. Whether it is a PERSONAL case is decided separately. */
 export const RULING_FRAMING = phrases([
   "هل يجوز", "يجوز لي", "هل يحل", "ما حكم", "ماحكم", "حكم من", "هل علي", "هل يجب", "هل يلزم", "هل يسقط", "يسقط عني", "ما حكمي", "هل يصح", "هل تصح", "هل تبطل",
-  "هل يبطل", "هل يفسد", "هل افطر", "هل اثم", "حكم الشرع", "الحكم الشرعي", "شرعا",
+  "هل يبطل", "هل يفسد", "هل مسموح", "هل ممنوع", "هل مباح", "هل يباح", "هل يحرم", "هل يكره", "هل ينقض", "هل ينتقض", "هل افطر", "هل اثم", "حكم الشرع", "الحكم الشرعي", "شرعا",
 ]);
 /** Asking outright for a fatwa is always a Level D request. */
 export const EXPLICIT_FATWA = phrases(["افتني", "افتوني", "اريد فتوى", "فتوى", "فتوي", "استفتاء", "استفتي"]);
@@ -161,6 +161,15 @@ export const QUIZ = words([
   "سمع لي", "سمعني", "تسميع", "اسالني", "راجع معي", "كويز",
 ]);
 export const WORD_MEANING = phrases(["معني كلمه", "معني لفظ", "ما معني كلمه", "معاني الكلمات", "معاني المفردات", "مفردات", "غريب القران", "معني مفرده", "ما معني لفظه"]);
+/**
+ * Asking WHY / WHEN / ABOUT WHOM an ayah was revealed (asbab al-nuzul). This is NOT ordinary tafsir: it needs an
+ * approved asbab source. Without one the assistant abstains instead of presenting tafsir as a reason for revelation.
+ */
+export const ASBAB = phrases([
+  "سبب نزول", "اسباب نزول", "اسباب النزول", "سبب النزول", "لماذا نزلت", "لم نزلت", "لما نزلت", "ليه نزلت", "متي نزلت", "متي نزل",
+  "في من نزلت", "فيم نزلت", "في ماذا نزلت", "علي من نزلت", "بماذا نزلت", "مناسبه نزول", "مناسبه النزول", "نزلت بسبب", "نزل بسبب",
+  "ما الذي نزلت", "ما الذي سبب نزول", "ما سبب نزولها", "سبب نزولها", "سبب نزوله", "لماذا نزل", "لم نزل",
+]);
 export const STORY = phrases(["قصه", "قصص", "ماذا حدث", "ما الذي حدث", "ماذا جري", "حكايه", "ما حدث"]);
 export const EXPLAIN = phrases([
   "ما معني", "معني", "ما تفسير", "تفسير", "فسر", "اشرح", "وضح", "ما المقصود", "لماذا", "سبب نزول", "ما الحكمه", "ما الدرس", "ما الفوايد",

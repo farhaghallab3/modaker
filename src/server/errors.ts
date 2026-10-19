@@ -77,6 +77,7 @@ export const MESSAGES = {
   invalid_credentials: "البريد أو كلمة المرور غير صحيحة.",
   range_too_large: "النطاق المطلوب كبير. اختر ٣٠ آية أو أقل.",
   push_not_configured: "الإشعارات الفورية غير مفعّلة على هذا الخادم.",
+  speech_unavailable: "تعذّر تجهيز الصوت الآن. الإجابة المكتوبة كما هي.",
   internal: "حدث خطأ غير متوقّع. حاول مرة أخرى.",
 } as const;
 

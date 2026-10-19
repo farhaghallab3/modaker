@@ -102,7 +102,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
             <div className="min-w-0">
               <p className="text-sm font-medium text-forest truncate">{state.profile.name || "أهلًا بك"}</p>
-              {state.demo ? <Badge tone="sand">{t("common.demo")}</Badge> : <p className="text-xs text-muted truncate">{state.profile.email}</p>}
+              <p className="text-xs text-muted truncate">{state.profile.email}</p>
             </div>
           </div>
         </div>
@@ -116,7 +116,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Logo compact />
             </Link>
             <div className="flex items-center gap-1">
-              {state.demo ? <Badge tone="sand">{t("common.demo")}</Badge> : null}
               <Link
                 href="/notifications"
                 aria-label={`التنبيهات${unread ? ` (${unread} جديدة)` : ""}`}

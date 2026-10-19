@@ -7,7 +7,7 @@
  */
 import type { AssistantAnswer } from "@/lib/types";
 import { optionalSession } from "@/server/auth";
-import { enforceRateLimit, json, readJson, route } from "@/server/http";
+import { clientIp, enforceRateLimit, json, readJson, route } from "@/server/http";
 import { answerQuestion } from "@/server/rag/assistant";
 import { toDbEnum } from "@/server/user/mappers";
 import { shouldPersistExchange } from "@/server/safety/privacy";
@@ -21,7 +21,7 @@ export const POST = route(async (req) => {
   enforceRateLimit(req, "assistant", session?.userId);
   const { question, context } = await readJson(req, askSchema, 16 * 1024);
 
-  const answer = await answerQuestion({ question, context });
+  const answer = await answerQuestion({ question, context, clientKey: session?.userId ?? `ip:${clientIp(req)}` });
   // Personal-case (Level D) questions are never stored — see src/server/safety/privacy.ts.
   if (session && shouldPersistExchange(answer)) await saveExchange(session.userId, question, answer).catch((e) => console.warn("[assistant] save failed:", e.message));
   return json(answer);

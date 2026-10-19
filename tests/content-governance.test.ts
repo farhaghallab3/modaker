@@ -28,13 +28,25 @@ const plain = { id: "u-plain", role: "user" as const };
 
 // ── demo vs review state ─────────────────────────────────────────────────
 
-test("every seeded story and video is demo AND draft — never approved or published by default", () => {
+/** The only videos reviewed and approved so far (supplementary external viewing; see tests/videos-visibility.test.ts). */
+const APPROVED_VIDEOS = ["v-mulk-fadl", "v-dhul-qarnayn", "v-musa-khidr", "v-qabil-habil"];
+
+test("every video except the explicitly approved ones is demo AND draft; the six reviewed stories are published", () => {
   assert.ok(STORIES.length >= 6 && VIDEOS.length >= 1);
-  for (const x of [...STORIES, ...VIDEOS]) {
+  for (const s of STORIES) {
+    assert.equal(s.isDemo, false, s.slug);
+    assert.equal(s.reviewState, "published", s.slug);
+  }
+  for (const x of VIDEOS.filter((v) => !APPROVED_VIDEOS.includes(v.id))) {
     assert.equal(x.isDemo, true, "seed content is demo");
     assert.equal(x.reviewState, "draft", "seed content is unreviewed");
     assert.equal(isAssistantEligible(x), false, "the assistant never treats it as knowledge");
     assert.equal(needsDemoNotice(x), true, "the UI labels it");
+  }
+  for (const id of APPROVED_VIDEOS) {
+    const v = VIDEOS.find((x) => x.id === id)!;
+    assert.equal(v.isDemo, false, id);
+    assert.equal(v.reviewState, "published", id);
   }
 });
 
@@ -176,7 +188,7 @@ test("planned sources are inert: nothing disabled, draft, or unreviewed is usabl
     assert.equal(isSourceUsable(s), s.enabled && (s.reviewState === "approved" || s.reviewState === "published"), s.id);
     if (!s.enabled) assert.equal(isApproved(s.id), false, s.id);
   }
-  for (const id of ["king-fahd-complex:quran", "quranenc:translations", "hadeethenc:hadith", "dorar:hadith-verification", "jamhara:terminology", "tafsir:ibn-kathir"]) {
+  for (const id of ["king-fahd-complex:quran", "quranenc:translations", "dorar:hadith-verification", "jamhara:terminology", "tafsir:ibn-kathir"]) {
     assert.equal(isApproved(id), false, `${id} is planned only`);
     assert.equal(KNOWLEDGE_SOURCES[id].licenseVerified, false, `${id} terms not yet verified`);
   }
@@ -190,7 +202,10 @@ test("the editorial/demo source can never be used by the assistant", () => {
 });
 
 test("only the current, already-in-use sources are usable", () => {
-  assert.deepEqual(approvedSourceIds().sort(), ["quran-com:uthmani", "tafsir:muyassar", "tanzil:uthmani"]);
+  assert.deepEqual(approvedSourceIds().sort(), ["hadeethenc:hadith", "quran-com:uthmani", "tafsir:muyassar", "tanzil:uthmani"]);
+  // the one approved hadith source: terms reviewed (verbatim use + attribution), used only via the dedicated hadith provider
+  assert.equal(KNOWLEDGE_SOURCES["hadeethenc:hadith"].kind, "hadith");
+  assert.equal(KNOWLEDGE_SOURCES["hadeethenc:hadith"].licenseVerified, true);
 });
 
 test("the King Fahd Complex source is registered as the future canonical text but is not switched on", () => {
@@ -216,4 +231,29 @@ test("Level C wording is marked as pending scholarly review; owner-provided text
   assert.equal(TEMPLATES.abstain.approval, "owner_provided");
   assert.ok(templatesPendingReview().some((t) => t.id === TEMPLATES.sensitiveC.id));
   assert.equal(TEMPLATES.abstain.text, "لا تتوفر لدي مادة موثوقة كافية للإجابة عن هذا السؤال.");
+});
+
+// ── learner-facing visibility: unreviewed content is hidden, never relabelled ──
+import { isLearnerVisible } from "../src/lib/content-state";
+import { getStory, storiesForSurah, visibleStories } from "../src/content/stories";
+import { getVideo, videosForStory, videosForSurah, visibleVideos } from "../src/content/videos";
+
+test("learners see only reviewed, published, non-demo content", () => {
+  assert.equal(isLearnerVisible({ isDemo: false, reviewState: "published" }), true);
+  assert.equal(isLearnerVisible({ isDemo: true, reviewState: "published" }), false);
+  for (const s of REVIEW_STATES.filter((s) => s !== "published")) assert.equal(isLearnerVisible({ isDemo: false, reviewState: s }), false, s);
+});
+
+test("every story and video that is not reviewed stays hidden from the accessors the UI uses", () => {
+  assert.ok(visibleStories().every(isLearnerVisible));
+  assert.ok(visibleVideos().every(isLearnerVisible));
+  for (const s of STORIES.filter((s) => !isLearnerVisible(s))) {
+    assert.equal(getStory(s.slug), undefined, s.slug);
+    assert.ok(!storiesForSurah(s.surahs[0]).some((x) => x.slug === s.slug));
+    assert.ok(!videosForStory(s.slug).some((v) => !isLearnerVisible(v)));
+  }
+  for (const v of VIDEOS.filter((v) => !isLearnerVisible(v))) {
+    assert.equal(getVideo(v.id), undefined, v.id);
+    if (v.surah) assert.ok(!videosForSurah(v.surah).some((x) => x.id === v.id));
+  }
 });

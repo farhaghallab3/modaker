@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AssistantSheet } from "@/components/assistant/AssistantLauncher";
 import { AudioPlayer } from "@/components/quran/AudioPlayer";
 import { SourceLine } from "@/components/quran/QuranVerse";
 import { useAyahAudio } from "@/components/quran/useAyahAudio";
-import { RecitationFeedback, TextOnlyNote } from "@/components/recitation/RecitationFeedback";
+import { BetaNote, RecitationFeedback, TextOnlyNote } from "@/components/recitation/RecitationFeedback";
 import { RecitationRecorder } from "@/components/recitation/RecitationRecorder";
+import { SelfGradeButtons } from "@/components/review/SelfReview";
 import { useRecitationRecorder } from "@/components/recitation/useRecitationRecorder";
 import { Icon } from "@/components/ui/Icon";
 import { Badge, Button, ButtonLink, cn, EmptyState, ErrorState, Toggle } from "@/components/ui/primitives";
@@ -20,6 +22,7 @@ import { clampRange, firstWord, memorizedRanges } from "@/lib/recitation/ranges"
 import { simulateTranscript } from "@/lib/recitation/simulate";
 import { ayahCountLabel, rangeLabel, relativeDueLabel } from "@/lib/review/labels";
 import { useApp } from "@/lib/store/AppProvider";
+import { isDueForReview, selfAssessable } from "@/lib/review/self-review";
 import { reviewQueue, todaysWird } from "@/lib/store/selectors";
 import type { AyahRange, RecitationAnalysis, SurahMeta, Transcript } from "@/lib/types";
 
@@ -113,6 +116,7 @@ function RangeSelector() {
             </section>
           </>
         )}
+        <BetaNote />
         <TextOnlyNote className="justify-center" />
       </div>
     </div>
@@ -166,6 +170,7 @@ function ReciteSession({
   const [saved, setSaved] = useState(false);
   const [hints, setHints] = useState(false);
   const [listen, setListen] = useState(false);
+  const [askAyah, setAskAyah] = useState<number | null>(null);
   const lastTranscript = useRef<Transcript | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
   const versesRef = useRef(verses);
@@ -218,11 +223,13 @@ function ReciteSession({
     setSaved(true);
   }
 
+  // What saving can actually do: only a well-heard, validated-recognizer result with at least one judged ayah schedules anything.
+  const changesLearning = !!analysis && analysis.learningEligible && analysis.recognition === "good" && analysis.ayahs.some((a) => a.status !== "uncertain");
   const nextReview = useMemo(() => {
-    if (!saved || !analysis) return null;
+    if (!saved || !analysis || !changesLearning) return null;
     const dates = analysis.ayahs.map((a) => state.progress[a.key]?.nextReviewAt).filter((d): d is string => !!d).sort();
     return dates[0] ?? null;
-  }, [saved, analysis, state.progress]);
+  }, [saved, analysis, changesLearning, state.progress]);
 
   const recording = rec.phase === "recording" || rec.phase === "starting" || rec.phase === "transcribing";
   const count = range.to - range.from + 1;
@@ -266,9 +273,14 @@ function ReciteSession({
                 {clamped ? <p className="mt-1 text-xs text-sand-700">عدّلنا المقطع ليبقى ضمن حدود السورة و٣٠ آية في الجلسة.</p> : null}
               </div>
               {!recording ? (
-                <Link href="/recite" className="text-sm text-olive hover:text-forest underline-offset-4 hover:underline shrink-0">
-                  تغيير المقطع
-                </Link>
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <Link href="/recite" className="text-sm text-olive hover:text-forest underline-offset-4 hover:underline">
+                    تغيير المقطع
+                  </Link>
+                  <button type="button" onClick={() => setAskAyah(range.from)} className="inline-flex items-center gap-1.5 text-sm text-olive hover:text-forest underline-offset-4 hover:underline">
+                    <Icon name="lamp" size={14} /> اسأل مُدّكِر
+                  </button>
+                </div>
               ) : null}
             </section>
 
@@ -345,6 +357,7 @@ function ReciteSession({
                   <Icon name="shield" size={17} className="mt-1 text-olive" />
                   لا نحفظ تسجيلك؛ يُحوَّل إلى نص ثم يُحذف.
                 </p>
+                <BetaNote />
                 <TextOnlyNote />
               </section>
             ) : null}
@@ -394,7 +407,7 @@ function ReciteSession({
                     <div role="status" className="rounded-[var(--radius-card)] bg-olive-100/60 px-5 py-4 animate-rise">
                       <p className="flex items-center gap-2 font-semibold text-forest">
                         <Icon name="checkCircle" size={19} className="text-olive" />
-                        حُفظت النتيجة وجُدولت المراجعة
+                        {changesLearning ? "حُفظت النتيجة وجُدولت المراجعة" : "حُفظت المحاولة في سجلّك — دون تغيير مراجعاتك"}
                       </p>
                       <p className="mt-1 text-sm text-ink/75">
                         {nextReview ? (
@@ -402,7 +415,7 @@ function ReciteSession({
                             موعد مراجعتك القادمة لهذا المقطع: <strong className="text-forest">{relativeDueLabel(nextReview)}</strong>.
                           </>
                         ) : null}{" "}
-                        كلما أتقنت التسميع تباعدت المراجعات.
+                        {changesLearning ? "كلما أتقنت التسميع تباعدت المراجعات." : "لم يتغيّر تقدّمك لأن هذه المحاولة لم تُحتسب أو لم نتأكد من كل الكلمات."}
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <ButtonLink href="/review" size="sm" variant="secondary" icon="review">
@@ -414,6 +427,7 @@ function ReciteSession({
                       </div>
                     </div>
                   ) : null}
+                  <SelfAssessPrompt analysis={analysis} />
                   {listen ? <AudioPlayer audio={audio} ayahs={verses} title="استمع للآيات" defaultOpen /> : null}
                 </div>
               }
@@ -422,17 +436,33 @@ function ReciteSession({
         ) : null}
       </div>
 
+      <AssistantSheet
+        open={askAyah !== null}
+        onClose={() => setAskAyah(null)}
+        context={askAyah !== null ? { surah: meta.number, ayah: askAyah } : undefined}
+        ayahRange={{ from: range.from, to: range.to }}
+        onAyahChange={setAskAyah}
+      />
+
       {stage === "feedback" && analysis ? (
         <FocusActionBar label="إجراءات النتيجة">
           <div className="grid grid-cols-2 sm:flex gap-2 sm:justify-center">
-            {!saved ? (
-              <Button className="col-span-2" icon="calendar" onClick={save}>
-                حفظ النتيجة وجدولة المراجعة
+            {analysis.recognition !== "good" ? (
+              <Button className="col-span-2" icon="mic" onClick={retry}>
+                أعد التسميع
               </Button>
-            ) : null}
-            <Button variant="ghost" icon="review" onClick={retry} className={saved ? "col-span-1" : ""}>
-              أعد المحاولة
-            </Button>
+            ) : (
+              <>
+                {!saved ? (
+                  <Button className="col-span-2" icon={changesLearning ? "calendar" : "check"} onClick={save}>
+                    {changesLearning ? "حفظ النتيجة وجدولة المراجعة" : "حفظ المحاولة في السجل"}
+                  </Button>
+                ) : null}
+                <Button variant="ghost" icon="review" onClick={retry} className={saved ? "col-span-1" : ""}>
+                  أعد المحاولة
+                </Button>
+              </>
+            )}
             <Button
               variant="quiet"
               icon="volume"
@@ -449,5 +479,42 @@ function ReciteSession({
         </FocusActionBar>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * When the recitation could not decide an ayah (unclear audio, unvalidated recognizer, doubtful words), the
+ * learner may assess the review themselves. Confirmed outcomes never get this offer.
+ */
+function SelfAssessPrompt({ analysis }: { analysis: RecitationAnalysis }) {
+  const { state } = useApp();
+  const now = useMemo(() => new Date(), []);
+  const ranges = useMemo(() => {
+    const keys = selfAssessable(analysis)
+      .filter((k) => {
+        const p = state.progress[k];
+        return !!p && isDueForReview(p, now);
+      })
+      .map((k) => k.split(":").map(Number) as [number, number])
+      .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const out: AyahRange[] = [];
+    for (const [surah, ayah] of keys) {
+      const last = out[out.length - 1];
+      if (last && last.surah === surah && last.to + 1 === ayah) last.to = ayah;
+      else out.push({ surah, from: ayah, to: ayah });
+    }
+    return out;
+  }, [analysis, state.progress, now]);
+  if (!ranges.length) return null;
+  const unheard = analysis.recognition !== "good";
+  return (
+    <section aria-label="قيّم مراجعتك" className="rounded-[var(--radius-card)] bg-white ring-1 ring-sand/40 px-4 py-4 sm:px-5">
+      <p className="text-sm leading-7 text-ink/85">
+        {unheard
+          ? "لم نسمع تلاوتك بوضوح، فلم نحتسب شيئًا. أعد التسميع، أو قيّم مراجعتك بنفسك:"
+          : "لم نتأكد من بعض الآيات، فلم نحتسب عليك شيئًا. أعد الجزء، أو قيّم مراجعتك بنفسك:"}
+      </p>
+      <SelfGradeButtons ranges={ranges} className="mt-3" />
+    </section>
   );
 }

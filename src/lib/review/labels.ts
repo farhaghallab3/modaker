@@ -3,6 +3,8 @@
  * dates, ranges). Pure — unit-tested in tests/journey.test.ts.
  */
 import { toArabicDigits } from "@/lib/quran/surahs";
+import type { SelfGrade } from "@/lib/types";
+import type { SelfReviewOutcome } from "./self-review";
 
 const DAY = 86_400_000;
 const d = (n: number | string) => toArabicDigits(n);
@@ -77,4 +79,43 @@ export function rangesLabel(ranges: { from: number; to: number }[]): string {
 export function clockLabel(sec: number): string {
   const s = Math.max(0, Math.floor(sec));
   return d(`${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`);
+}
+
+// ── Self-assessed review (Arabic-first; no technical vocabulary) ─────────────────────────────
+
+export const SELF_GRADES: { grade: SelfGrade; label: string; hint: string }[] = [
+  { grade: "solid", label: "ثبتت", hint: "تذكّرتها بثقة" },
+  { grade: "hesitated", label: "ترددت", hint: "تذكّرتها لكن بعد تردّد أو جهد" },
+  { grade: "forgot", label: "نسيت", hint: "لم أستطع تذكّرها" },
+];
+
+export const SELF_GRADE_LABEL: Record<SelfGrade, string> = { solid: "ثبتت", hesitated: "ترددت", forgot: "نسيت" };
+
+/** The sentence shown after a self-assessment. `nextDue` is the earliest next review date among the range. */
+export function selfReviewMessage(grade: SelfGrade, counts: Record<SelfReviewOutcome, number>, nextDue: string | null, now = new Date(), stillNeedsRecitation = 0): string {
+  const applied = counts.credited + counts.downgraded;
+  if (!applied) {
+    if (counts["same-day"]) return "قيّمت هذه الآيات اليوم، فلا يُحتسب تقييم مكرّر. يمكنك تغيير التقييم إلى تقييم أدنى فقط.";
+    if (counts["recitation-today"]) return "حُسمت مراجعة هذه الآيات بتسميعك اليوم، فلا حاجة لتقييم ذاتي.";
+    if (counts["not-due"]) return "سجّلنا تقييمك، ولم يتغيّر موعد المراجعة لأن موعدها لم يحن بعد.";
+    return "لا توجد آيات محفوظة هنا لتقييمها.";
+  }
+  const when = nextDue ? relativeDueLabel(nextDue, now) : "";
+  // Some of these ayahs carry a confirmed recitation difference: a self-assessment does not clear it.
+  if (stillNeedsRecitation && grade === "solid") return "سجّلنا مراجعتك اليوم، لكن بعض هذه الآيات ما زالت تحتاج إلى تسميع ناجح لتثبيتها، ولم يتغيّر موعد مراجعتها.";
+  if (stillNeedsRecitation && grade === "hesitated") return `سجّلنا تقييمك، وبعض هذه الآيات ما زالت تحتاج إلى تسميع ناجح لتثبيتها. موعدها: ${when}.`;
+  if (grade === "solid") return `بارك الله فيك. موعد مراجعتك القادمة: ${when}.`;
+  if (grade === "hesitated") return `لا بأس. قرّبنا موعد المراجعة لتثبيتها: ${when}.`;
+  return "لا بأس، الحفظ يثبت بالتكرار. اقرأ الآيات الآن ثم عُد لتسمّعها؛ سنذكّرك بها غدًا.";
+}
+
+/** "آخر تقييم: ذاتي — ثبتت" — a self-assessment is never described as verified. */
+export function lastSelfLabel(grade: SelfGrade): string {
+  return `آخر تقييم: ذاتي — ${SELF_GRADE_LABEL[grade]}`;
+}
+
+/** "آخر تسميع مؤكّد: ٣ أكتوبر" — only for recitations the app could actually judge. */
+export function lastRecitationLabel(at: string | Date): string {
+  const date = toArabicDigits(new Date(at).toLocaleDateString("ar", { day: "numeric", month: "long" }));
+  return `آخر تسميع مؤكّد: ${date}`;
 }

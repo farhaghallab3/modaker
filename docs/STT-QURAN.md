@@ -41,3 +41,21 @@ the same ayah are still scored.
 - The confusion heuristic, thresholds and second-opinion value have **not** been validated on real Arabic recitation audio; use `STT_TRACE` to collect measurements.
 - Different readings (qira'at), elongation, fast/slurred speech and background noise all degrade recognition.
 - Uncertain ≠ correct: a user who truly says a wrong word the recognizer renders plausibly will be asked to repeat, not marked wrong, until a second signal confirms it.
+
+
+## Beta policy (current production behaviour)
+
+Recitation checking ships as an explicitly conservative **Beta**. What production uses, exactly:
+
+- **Recognizer:** server upload → `/api/v1/recitation/transcribe` → OpenAI **`whisper-1`** (the only primary the code allows: any non-Whisper `OPENAI_STT_MODEL` is ignored with a warning, because the GPT-4o family silently corrects wrong words toward the Quran). Language `ar`, `temperature 0`, **no prompt by default** (`STT_PROMPT=off`). Optional `STT_SECOND_OPINION` model is evidence only.
+- **Not used in production:** the CTC probes, `/dev/*` tools, `src/server/stt/benchmark.ts`. Dev routes are files named `page.dev.tsx` / `route.dev.ts`; they are routes only when the build runs with `DEV_TOOLS=1` (PowerShell: `$env:DEV_TOOLS=1; npm run dev`, plus `STT_BENCHMARK=on`, `CTC_CLIPS_DIR=...`). A normal build contains none of them.
+- **On-device speech (`NEXT_PUBLIC_STT_MODE=browser`)** and simulations are **practice only**: feedback is shown, learning state is never changed (`learningEligible=false`).
+
+What may change learning state:
+- **Counted against the learner:** only a *corroborated* difference — a second recognizer heard the same different word, or the recognizer's own word probability is high and not in a segment it flagged. An omission counts only if the second recognizer also heard nothing there.
+- **Everything else is `uncertain`** (reason `unconfirmed`, `low-confidence`, `recognizers-disagree`, `confusable`): excluded from the score, no weak mark, no review scheduled, no mastery change. With a single `whisper-1` pass, differences are therefore never counted — only exact matches are.
+- **Extra words, repeated words, order and long pauses** are informational only.
+- **Poor recognition** (fewer than 40 % of the expected words recognized, or an empty transcript — includes hallucinated text) → `recognition: "poor"|"empty"`: nothing is counted, nothing changes, the learner is asked to repeat.
+- A fully matched ayah from the validated recognizer still counts as recall.
+
+The UI separates the two stages: **«ما سمعه التعرّف على الكلام»** (the verbatim transcript, never altered) and **«المقارنة بالنص الموثّق»** (the per-word comparison). It states that checking is Beta, may mishear, and does not assess tajweed.

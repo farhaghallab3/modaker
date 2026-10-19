@@ -229,7 +229,7 @@ export const KNOWLEDGE_SOURCES: Record<string, KnowledgeSource> = {
     url: "https://hadeethenc.com",
     kind: "hadith",
     language: "ar",
-    description: "Authentic hadith with explanations and grading, translated. Hadith integration is deferred; this entry only reserves its place in the registry.",
+    description: "Authentic hadith with explanations and grading (Arabic + translations). Retrieved at question time from the official public API (src/server/hadith/hadeethenc.ts); shown verbatim with grade, reference and a link.",
     tier: 4,
     authorityType: "scholarly_foundation",
     languages: ["multi"],
@@ -237,9 +237,12 @@ export const KNOWLEDGE_SOURCES: Record<string, KnowledgeSource> = {
     apiDocsUrl: "https://hadeethenc.com/api-docs",
     mcpAvailable: true,
     autoRetrievalSuitable: true,
-    requiresHumanReview: true,
-    licenseNote: PDF_NOTE,
-    ...PLANNED,
+    requiresHumanReview: false,
+    licenseNote:
+      "Terms (API docs + site): contents may be used with no modification, addition or deletion, and clear attribution to the publisher and HadeethEnc.com; robots.txt Content-Signal: ai-train=yes, search=yes, ai-input=yes. Approved for question-time API retrieval with a small in-memory cache.",
+    licenseVerified: true,
+    enabled: true,
+    reviewState: "published" as const,
   },
   // General fiqh (knowledge gap B-01 in docs/BACKLOG.md). Registered so the taxonomy and admin
   // screens know about it; inert until a reviewer approves a source and a person verifies its terms.
@@ -317,6 +320,11 @@ export function isSourceUsable(s: Pick<KnowledgeSource, "enabled" | "reviewState
 export function isApproved(id: string): boolean {
   const s = KNOWLEDGE_SOURCES[id];
   return !!s && isSourceUsable(s);
+}
+
+/** Is there an approved, published source of asbab al-nuzul? (None yet: the question is abstained, never answered from tafsir.) */
+export function hasApprovedAsbabSource(): boolean {
+  return Object.values(KNOWLEDGE_SOURCES).some((s) => s.kind === "asbab" && isSourceUsable(s));
 }
 
 export function approvedSourceIds(): string[] {

@@ -50,6 +50,26 @@ export const ayahProgressSchema = z.object({
     .array(z.object({ at: isoDate, accuracy: z.number().min(0).max(1), mistakes: z.number().int().min(0), recId: z.string().max(64).optional() }))
     .max(10)
     .optional(),
+  // Self-assessed review (never recitation evidence). Without this whitelist the server would strip them.
+  selfReviews: z
+    .array(z.object({ at: isoDate, grade: z.enum(["solid", "hesitated", "forgot"]), source: z.literal("self") }))
+    .max(10)
+    .optional(),
+  selfStreak: z.number().int().min(0).max(10_000).optional(),
+  weakBy: z.enum(["recitation", "self"]).optional(),
+  selfBefore: z
+    .object({
+      day: z.string().max(10),
+      intervalDays: z.number().min(0).max(10_000),
+      ease: z.number().min(0).max(10),
+      selfStreak: z.number().int().min(0).max(10_000),
+      streak: z.number().int().min(0),
+      status: z.enum(["new", "learning", "memorized", "weak", "mastered"]),
+      weakBy: z.enum(["recitation", "self"]).optional(),
+      nextReviewAt: isoDate.optional(),
+      lastReviewedAt: isoDate.optional(),
+    })
+    .optional(),
 });
 
 export const profileSchema = z

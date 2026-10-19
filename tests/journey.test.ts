@@ -23,9 +23,11 @@ test("simulated transcript produces a realistic, imperfect analysis", () => {
   const t = simulateTranscript(AYAHS);
   assert.equal(t.provider, "dev:simulation");
   const r = analyzeRecitation(AYAHS, t, { surah: 999, from: 1, to: 3 });
-  assert.ok(r.accuracy < 1 && r.accuracy > 0.6, `accuracy ${r.accuracy}`);
+  const share = r.matchedWords / r.expectedWords;
+  assert.ok(share < 1 && share > 0.6, `matched ${r.matchedWords}/${r.expectedWords}`);
   const types = new Set(r.mistakes.map((m) => m.type));
-  assert.ok(types.has("omitted"));
+  assert.ok(types.has("uncertain"), "an unconfirmed difference is uncertain, not an accusation");
+  assert.equal(r.learningEligible, false, "a simulation is practice only");
   assert.ok(types.has("hesitation"));
   // feedback words are always tokens of the verified text
   const expected = AYAHS.flatMap((a) => a.textUthmani.split(/\s+/));

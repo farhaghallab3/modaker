@@ -103,6 +103,38 @@ export interface AyahProgress {
    * "weak" / "mastered": each entry names the saved recitation (`recId`) that produced it.
    */
   recent?: { at: string; accuracy: number; mistakes: number; recId?: string }[];
+
+  // ── Self-assessed review (kept entirely separate from the recitation evidence above) ──────────
+  /** The learner's own assessments, oldest first (last 5). Never counted as recitation evidence. */
+  selfReviews?: SelfReviewEvent[];
+  /** Consecutive "solid" self-reviews on distinct days; reset by hesitated / forgot. */
+  selfStreak?: number;
+  /**
+   * Where a `weak` status comes from. "recitation" = confirmed recitation evidence: it outranks
+   * "self" and only a later valid recitation may clear it. Legacy rows without it are derived.
+   */
+  weakBy?: "recitation" | "self";
+  /** State just before today's first credited self-review, so a WORSE same-day assessment can correct it. */
+  selfBefore?: {
+    day: string;
+    intervalDays: number;
+    ease: number;
+    selfStreak: number;
+    streak: number;
+    status: AyahStatus;
+    weakBy?: "recitation" | "self";
+    nextReviewAt?: string;
+    lastReviewedAt?: string;
+  };
+}
+
+/** ثبتت (solid) · ترددت (hesitated) · نسيت (forgot). */
+export type SelfGrade = "solid" | "hesitated" | "forgot";
+export interface SelfReviewEvent {
+  at: string;
+  grade: SelfGrade;
+  /** Always "self": a self-assessment is never confused with validated recitation evidence. */
+  source: "self";
 }
 
 /** Exactly where the user stopped — powers "continue from the exact ayah". */
@@ -127,6 +159,15 @@ export interface Bookmark {
 }
 
 // ── Recitation ───────────────────────────────────────────────────────────
+/**
+ * Why a difference is "uncertain" (not attributed to the learner):
+ *  - recognizers-disagree / low-confidence: the recognizer's own evidence says it may have misheard
+ *  - confusable: the heard word is a plausible mis-recognition of the expected one (heuristic, last resort)
+ *  - unconfirmed: nothing independent corroborates the difference (one recognizer, no word confidence) — the
+ *    default for every difference, because a single general-purpose recognizer can mishear, drop or invent words
+ */
+export type UncertainReason = "recognizers-disagree" | "low-confidence" | "confusable" | "unconfirmed";
+
 export type MistakeType = "omitted" | "added" | "incorrect" | "order" | "hesitation" | "uncertain";
 
 export interface RecognizedWord {
@@ -173,7 +214,7 @@ export interface RecitationMistake {
   /** seconds of silence for hesitation */
   pauseSec?: number;
   /** For "uncertain": why we could not tell a recitation error from a recognition error. */
-  reason?: "recognizers-disagree" | "low-confidence" | "confusable";
+  reason?: UncertainReason;
   /** For "uncertain": the recognizer's own probability for the heard word, when it provided one. */
   confidence?: number;
 }
@@ -188,7 +229,7 @@ export interface AyahRecitationResult {
    */
   status: "mastered" | "needs-review" | "missed" | "uncertain";
   /** per expected word: matched / mismatched / omitted / uncertain (recognizer doubt) */
-  words: { text: string; state: "ok" | "incorrect" | "omitted" | "uncertain"; heard?: string; reason?: "recognizers-disagree" | "low-confidence" | "confusable"; confidence?: number }[];
+  words: { text: string; state: "ok" | "incorrect" | "omitted" | "uncertain"; heard?: string; reason?: UncertainReason; confidence?: number }[];
   mistakes: RecitationMistake[];
 }
 
@@ -200,6 +241,19 @@ export interface RecitationAnalysis {
   extraWords: string[];
   /** Words we could not attribute to the learner rather than to the recognizer — excluded from the score. */
   uncertainWords: number;
+  /** Expected words matched exactly / expected words in total (the honest headline number). */
+  matchedWords: number;
+  expectedWords: number;
+  /**
+   * How well the recognizer heard this recitation. "poor"/"empty": too little of the expected text was
+   * recognized to judge anything — the learner is asked to repeat and NOTHING is counted against them.
+   */
+  recognition: "good" | "poor" | "empty";
+  /**
+   * Whether this result may change learning state. False when the transcript did not come from the server
+   * recognizer we have measured (e.g. on-device speech, simulation): shown to the learner as practice only.
+   */
+  learningEligible: boolean;
   transcript: Transcript;
   /** Always true: text matching only, never acoustic tajweed assessment. */
   textOnly: true;
@@ -281,6 +335,8 @@ export type AnswerType =
 export type AbstainReason =
   | "no_evidence"
   | "no_hadith_source"
+  /** Asbab al-nuzul asked but no approved asbab source is loaded. */
+  | "no_asbab_source"
   /** A general fiqh question was recognised but no approved fiqh source is loaded (knowledge gap). */
   | "no_fiqh_source"
   | "language_unsupported"
@@ -306,7 +362,26 @@ export interface Citation {
  */
 export type AnswerBlock =
   | { type: "quran"; verses: Ayah[]; source: SourceRef; caption?: string }
-  | { type: "hadith"; text: string; narrator?: string; grade: string; gradedBy?: string; reference: string; sourceId: string }
+  | {
+      type: "hadith";
+      /** verbatim from the source */
+      text: string;
+      narrator?: string;
+      /** verbatim from the source — never normalised */
+      grade: string;
+      gradedBy?: string;
+      /** verbatim from the source (التخريج / المراجع) */
+      reference: string;
+      sourceId: string;
+      /** the source's stable id for this hadith */
+      id?: string;
+      title?: string;
+      /** verbatim العزو, e.g. «متفق عليه» */
+      attribution?: string;
+      /** canonical public page of this hadith at the source */
+      url?: string;
+      sourceTitle?: string;
+    }
   | { type: "source_quote"; text: string; sourceId: string; ref: string; author?: string; citation: number }
   | { type: "explanation"; text: string; origin: "template" | "extractive" | "generated"; citations: number[] }
   | { type: "warning"; text: string; code: "sensitive" | "quote_mismatch" | "injection" | "hostile" | "language" | "policy"; templateId?: string; templateVersion?: number }
@@ -333,6 +408,8 @@ export interface AssistantAnswer {
   referral?: boolean;
   /** Shown near the assistant: it is an AI tool, not a scholar. */
   disclosure?: string;
+  /** Present only when the generated explanation may be read aloud; the signature is what lets the browser ask for exactly this text. */
+  speech?: { text: string; exp: number; sig: string };
 }
 
 export interface ChatMessage {

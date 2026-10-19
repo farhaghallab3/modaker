@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Page } from "@/components/layout/PageHeader";
+import { CoachCard } from "./CoachCard";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Badge, ButtonLink, EmptyState, ProgressBar, ProgressRing, Stat, cn } from "@/components/ui/primitives";
 import { ayahsLabel, countLabel, daysLabel, formatPercent, formatTime, rangeLabel } from "@/lib/arabic";
@@ -72,6 +73,7 @@ export function DashboardScreen() {
     <Page>
       <h1 className="sr-only">الرئيسية</h1>
       <ReminderBanner reminders={data.reminders} />
+      <CoachCard />
 
       <div className="grid gap-6 lg:grid-cols-12 lg:gap-8">
         <ResumeHero

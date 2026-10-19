@@ -4,12 +4,13 @@ import { useState } from "react";
 import { Page, PageHeader } from "@/components/layout/PageHeader";
 import { StoryCard } from "@/components/stories/StoryCard";
 import { EmptyState } from "@/components/ui/primitives";
-import { STORIES } from "@/content/stories";
+import { visibleStories } from "@/content/stories";
 import { DEMO_CONTENT_LABEL } from "@/lib/content-state";
 import { getSurahMeta } from "@/lib/quran/surahs";
 import { FilterChips } from "@/features/shared/FilterChips";
 
 const FEATURED = "yusuf";
+const STORIES = visibleStories();
 const SURAH_FILTERS = [...new Set(STORIES.flatMap((s) => s.surahs))].sort((a, b) => a - b);
 
 export function StoriesScreen() {
@@ -55,11 +56,15 @@ export function StoriesScreen() {
           </ul>
         </section>
       ) : !featured ? (
-        <EmptyState icon="scroll" title="لا قصص لهذه السورة بعد" body="نضيف قصصًا جديدة تباعًا بعد مراجعتها علميًا." />
+        <EmptyState
+          icon="scroll"
+          title={STORIES.length ? "لا قصص لهذه السورة بعد" : "القصص قيد المراجعة"}
+          body="نضيف قصصًا جديدة تباعًا بعد مراجعتها علميًا."
+        />
       ) : null}
 
       <p className="mt-12 border-t hairline pt-5 text-xs leading-6 text-muted max-w-2xl">
-        {DEMO_CONTENT_LABEL}. المقدمات وملخصات الفصول ليست تفسيرًا. نص الآيات من المصحف الموثّق، والتفسير من التفسير الميسر.
+        المقدمات وملخصات الفصول ليست تفسيرًا. نص الآيات من المصحف الموثّق، والتفسير من التفسير الميسر.
       </p>
     </Page>
   );

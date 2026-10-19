@@ -55,7 +55,11 @@ function analysis(surah: number, results: [number, number][], accuracyOverall = 
     mistakes: [],
     extraWords: [],
     uncertainWords: 0,
-    transcript: { text: "x", provider: "test", language: "ar-SA" },
+    matchedWords: 0,
+    expectedWords: 0,
+    recognition: "good",
+    learningEligible: true, // a validated server transcript: these tests exercise the learning loop itself
+    transcript: { text: "x", provider: "openai:whisper-1", language: "ar" },
     textOnly: true,
   };
 }

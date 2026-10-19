@@ -59,6 +59,19 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ question, context }),
     }).then((r) => json<AssistantAnswer>(r)),
+  /** Spoken answer (MP3). Only text the server signed on a real assistant answer is accepted. */
+  speech: async (speech: { text: string; exp: number; sig: string }): Promise<Blob> => {
+    const res = await fetch(`${BASE}/assistant/speech`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(speech),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(body.error ?? res.statusText, res.status, body.code);
+    }
+    return res.blob();
+  },
   subscribePush: (subscription: PushSubscriptionJSON) =>
     fetch(`${BASE}/notifications/subscribe`, {
       method: "POST",

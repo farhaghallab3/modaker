@@ -28,6 +28,17 @@ export interface SpeechToTextProvider {
 
 export { ALLOWED_AUDIO_MIME, baseMime, extensionFor } from "./mime";
 
+/**
+ * The PRIMARY recognizer for recitation must not silently correct what the learner said. Measured on real
+ * recordings: whisper-1 kept a deliberate wrong word; the GPT-4o transcription family (gpt-4o-transcribe,
+ * gpt-4o-mini-transcribe, gpt-transcribe) rewrote it toward the Quran. Any non-Whisper model configured as the
+ * primary is therefore ignored for recitation (other models may still serve as a second opinion, i.e. evidence).
+ */
+export const RECITATION_FALLBACK_MODEL = "whisper-1";
+export function recitationPrimaryModel(configured: string): { model: string; overridden: boolean } {
+  return /^whisper/.test(configured) ? { model: configured, overridden: false } : { model: RECITATION_FALLBACK_MODEL, overridden: true };
+}
+
 let cached: SpeechToTextProvider | null = null;
 
 export function getSttProvider(): SpeechToTextProvider {
@@ -38,10 +49,12 @@ export function getSttProvider(): SpeechToTextProvider {
       cached = new MockSttProvider(process.env.MOCK_STT_TEXT ?? "");
       break;
     case "openai": {
-      const primary = new OpenAiSttProvider();
+      const { model, overridden } = recitationPrimaryModel(env.openaiSttModel());
+      if (overridden) console.warn(`[stt] OPENAI_STT_MODEL="${env.openaiSttModel()}" can silently correct recitation toward the Quran; using ${model} as the primary recognizer.`);
+      const primary = new OpenAiSttProvider(env.openaiApiKey(), model);
       const second = env.sttSecondOpinion();
       // A second recognizer, when configured, gives independent evidence about each disputed word.
-      cached = second && second !== "off" && second !== env.openaiSttModel() ? new ConsensusSttProvider(primary, new OpenAiSttProvider(env.openaiApiKey(), second)) : primary;
+      cached = second && second !== "off" && second !== model ? new ConsensusSttProvider(primary, new OpenAiSttProvider(env.openaiApiKey(), second)) : primary;
       break;
     }
     default:

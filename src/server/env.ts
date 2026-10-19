@@ -31,6 +31,9 @@ export const env = {
   openaiBaseUrl: () => str("OPENAI_BASE_URL", "https://api.openai.com/v1").replace(/\/+$/, ""),
   openaiSttModel: () => str("OPENAI_STT_MODEL", "whisper-1"),
   openaiChatModel: () => str("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+  /** Session Coach (short personalized plan message). On by default when an OpenAI key exists; "off" = deterministic template only. */
+  coachAi: () => str("COACH_AI", "on").toLowerCase() !== "off",
+  coachModel: () => str("COACH_MODEL", str("OPENAI_CHAT_MODEL", "gpt-4o-mini")),
   openaiEmbeddingModel: () => str("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
 
   llmProvider: () => str("LLM_PROVIDER", "extractive") as "anthropic" | "openai" | "extractive",
@@ -43,10 +46,10 @@ export const env = {
    */
   assistantGeneration: () => str("ASSISTANT_GENERATION", "off").toLowerCase() === "on",
   /**
-   * Transcription context. "domain" (default) = a generic sentence about the kind of audio; "surah" adds
+   * Transcription context. "off" (default — the measured configuration) = none; "domain" = a generic sentence about the kind of audio; "surah" adds
    * only the surah NAME; "off" = none. The expected ayah text is NEVER sent. See src/server/stt/prompt.ts.
    */
-  sttPrompt: () => str("STT_PROMPT", "domain") as "off" | "domain" | "surah",
+  sttPrompt: () => str("STT_PROMPT", "off") as "off" | "domain" | "surah",
   /**
    * A second, independent recognizer run on the same audio (e.g. "gpt-4o-transcribe"). Where the two disagree
    * about a word, the word is "uncertain" instead of being counted against the learner. "off" disables it.
@@ -57,17 +60,32 @@ export const env = {
   /** Development-only raw STT benchmark (page + API). Off unless explicitly on; the API also refuses non-local hosts. */
   sttBenchmark: () => str("STT_BENCHMARK", "off").toLowerCase() === "on",
   /**
-   * Web-grounded answers (Claude + web search restricted to trusted Islamic sites).
-   * Needs ANTHROPIC_API_KEY; on by default once a key is set. "off" disables it.
+   * Trusted-web fallback for ordinary Islamic FACTUAL questions (OpenAI Responses `web_search`, restricted to a reviewed domain allow-list).
+   * Explicit opt-in: needs OPENAI_API_KEY AND ASSISTANT_WEB_SEARCH=on; off otherwise. Used only after the approved local sources found
+   * nothing and the safety router + web gate allowed it (never Quran/tafsir, hadith, fiqh, personal, asbab or off-topic questions).
    */
-  assistantWebSearch: () => str("ASSISTANT_WEB_SEARCH", "on").toLowerCase() !== "off",
-  assistantWebModel: () => str("ASSISTANT_WEB_MODEL", "claude-opus-5-5"),
+  assistantWebSearch: () => str("ASSISTANT_WEB_SEARCH", "off").toLowerCase() === "on",
+  /** The domain filter is only supported by the gpt-5 family (not gpt-4o / gpt-4.1). */
+  assistantWebModel: () => str("ASSISTANT_WEB_MODEL", "gpt-5-mini"),
+  /** Daily cap on web-fallback calls per server instance (cost protection); a minimum of 1 applies. */
+  assistantWebDailyCap: () => int("ASSISTANT_WEB_DAILY_CAP", 150),
   /** Comma-separated allow-list; empty → DEFAULT_TRUSTED_DOMAINS in src/server/rag/web-answer.ts. */
   assistantTrustedDomains: () =>
     str("ASSISTANT_TRUSTED_DOMAINS")
       .split(",")
       .map((d) => d.trim().toLowerCase())
       .filter(Boolean),
+  /**
+   * Spoken assistant answers (OpenAI text-to-speech, output only). On by default when an OpenAI key and SESSION_SECRET exist; "off" hides the speaker.
+   * Model/voice were chosen by a real Arabic probe (see src/server/tts/speech.ts); the overrides below are optional.
+   */
+  assistantTts: () => str("ASSISTANT_TTS", "on").toLowerCase() !== "off",
+  ttsModel: () => str("TTS_MODEL", "gpt-4o-mini-tts"),
+  ttsVoice: () => str("TTS_VOICE", "marin"),
+  /** Daily cap on speech requests per server instance (cost protection). */
+  ttsDailyCap: () => int("ASSISTANT_TTS_DAILY_CAP", 300),
+  /** Hadith source. "hadeethenc" = the official HadeethEnc API (no key); anything else → hadith requests abstain. */
+  hadithProvider: () => str("HADITH_PROVIDER", "off").toLowerCase(),
   embeddingProvider: () => str("EMBEDDING_PROVIDER", "openai") as "openai" | "none",
 
   /** 0 = never persist audio (default). */

@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { analyzeRecitation } from "../src/lib/recitation/compare";
 import { normalizeArabic, matchKey } from "../src/lib/quran/normalize";
-import type { Ayah } from "../src/lib/types";
+import type { Ayah, Transcript } from "../src/lib/types";
 
 const mk = (n: number, text: string): Ayah => ({ surah: 999, ayah: n, key: `999:${n}`, textUthmani: text });
 const AYAHS = [
@@ -16,7 +16,7 @@ const AYAHS = [
   mk(3, "ثُمَّ رَجَعَ إِلَىٰ بَيْتِهِۦ مَسْرُورًا"),
 ];
 const range = { surah: 999, from: 1, to: 3 };
-const tr = (text: string, words?: { text: string; start: number; end: number }[]) => ({ text, words, provider: "test", language: "ar" });
+const tr = (text: string, words?: { text: string; start: number; end: number }[], extra: Partial<Transcript> = {}): Transcript => ({ text, words, provider: "test", language: "ar", ...extra });
 
 test("normalization folds diacritics, wasla, dagger alef, small marks", () => {
   assert.equal(normalizeArabic("ٱلْكِتَٰبَ"), "الكتب");
@@ -32,12 +32,16 @@ test("perfect recitation scores 100%", () => {
   assert.ok(r.ayahs.every((a) => a.status === "mastered"));
 });
 
-test("detects omitted, incorrect and added words", () => {
-  const r = analyzeRecitation(AYAHS, tr("ذهب الطالب الى المدرسة وقرأ الدرس في المكتبة الكبيرة جدا ثم رجع الى بيته مسرورا"), range);
-  const types = r.mistakes.map((m) => `${m.type}:${m.ayahKey}`).sort();
-  assert.deepEqual(types, ["added:999:2", "incorrect:999:2", "omitted:999:1"]);
-  assert.equal(r.ayahs[0].words[4].state, "omitted");
-  assert.equal(r.ayahs[1].words[1].heard, "الدرس");
+test("a single recognizer's differences are uncertain; with independent corroboration they are omitted / incorrect / added", () => {
+  const text = "ذهب الطالب الى المدرسة وقرأ الدرس في المكتبة الكبيرة جدا ثم رجع الى بيته مسرورا";
+  const alone = analyzeRecitation(AYAHS, tr(text), range);
+  assert.deepEqual(alone.mistakes.map((m) => `${m.type}:${m.ayahKey}`).sort(), ["added:999:2", "uncertain:999:1", "uncertain:999:2"]);
+  assert.equal(alone.ayahs[0].words[4].state, "uncertain");
+  assert.equal(alone.ayahs[1].words[1].heard, "الدرس");
+
+  const both = analyzeRecitation(AYAHS, tr(text, undefined, { evidence: { kind: "none", secondOpinion: { provider: "g", text } } }), range);
+  assert.deepEqual(both.mistakes.map((m) => `${m.type}:${m.ayahKey}`).sort(), ["added:999:2", "incorrect:999:2", "omitted:999:1"]);
+  assert.equal(both.ayahs[0].words[4].state, "omitted");
 });
 
 test("detects ayah order problem", () => {

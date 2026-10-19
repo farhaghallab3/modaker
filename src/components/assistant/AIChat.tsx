@@ -5,10 +5,12 @@ import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/components/ui/primitives";
 import { api, ApiError } from "@/lib/api";
 import { AI_DISCLOSURE } from "@/lib/brand";
-import { getSurahMeta } from "@/lib/quran/surahs";
+import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import { uid } from "@/lib/store/state";
 import type { AssistantAnswer, ChatMessage } from "@/lib/types";
 import { AnswerView } from "./AnswerView";
+import { SpeakButton } from "./SpeakButton";
+import { useVoiceQuestion, VoiceButton } from "./VoiceQuestion";
 
 export interface AssistantContext {
   surah?: number;
@@ -17,14 +19,23 @@ export interface AssistantContext {
 }
 
 export const ASSISTANT_SUGGESTIONS = [
-  "اشرح لي هذه الآية",
+  "اشرح لي الآية ٢ من سورة الفاتحة",
   "احكِ لي قصة أصحاب الكهف",
   "اختبرني في سورة مريم",
   "ما معنى هذه الكلمة؟",
 ] as const;
 
 /** AI disclosure (PDF: transparency) + the sourcing promise. Shown in the page and the side sheet. */
-export const ASSISTANT_DISCLAIMER = `${AI_DISCLOSURE} يذكر مُدّكِر مرجع كل إجابة.`;
+export const ASSISTANT_DISCLAIMER = `${AI_DISCLOSURE} يجيبك بعناية، ويعرض المصادر عند الحاجة.`;
+
+/** Suggestions when the learner is on a specific ayah: «هذه الآية» is resolved from the context chip. */
+export const AYAH_SUGGESTIONS = ["اشرح لي هذه الآية ببساطة", "ما معنى هذه الآية؟", "لماذا نزلت هذه الآية؟"] as const;
+
+export function contextLabelFor(context?: AssistantContext): string | null {
+  if (!context?.surah) return null;
+  const name = `سورة ${getSurahMeta(context.surah)?.nameAr ?? ""}`;
+  return context.ayah ? `الآية ${toArabicDigits(context.ayah)} من ${name}` : name;
+}
 
 const MAX_LEN = 1000;
 
@@ -90,7 +101,18 @@ export function AIChat({
   const hintId = useId();
   const sheet = variant === "sheet";
 
-  const contextLabel = context?.surah ? `سورة ${getSurahMeta(context.surah)?.nameAr ?? ""}` : null;
+  const [voiceNote, setVoiceNote] = useState(false);
+  const voice = useVoiceQuestion({
+    // the existing upload needs a valid ayah range; the audio is a QUESTION, so only the surah/ayah validity matters
+    range: { surah: context?.surah ?? 1, from: context?.ayah ?? 1, to: context?.ayah ?? 1 },
+    onText: (t) => {
+      setDraft(t.slice(0, MAX_LEN));
+      setVoiceNote(true);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    },
+  });
+  const contextLabel = contextLabelFor(context);
+  const suggestions = context?.ayah ? AYAH_SUGGESTIONS : ASSISTANT_SUGGESTIONS;
 
   // keep the latest exchange in view
   useEffect(() => {
@@ -168,7 +190,7 @@ export function AIChat({
         className={cn("flex-1", sheet ? "min-h-0 overflow-y-auto overscroll-contain px-5 sm:px-6 py-6" : "py-4")}
       >
         {empty ? (
-          <Welcome onPick={(s) => void ask(s)} contextLabel={contextLabel} />
+          <Welcome onPick={(s) => void ask(s)} contextLabel={contextLabel} items={suggestions} />
         ) : (
           <ol className="space-y-8">
             {messages.map((m) =>
@@ -185,11 +207,14 @@ export function AIChat({
                   <div className="min-w-0 flex-1">
                     <span className="sr-only">إجابة مُدّكِر: </span>
                     {m.answer ? (
-                      <AnswerView
-                        answer={m.answer}
-                        idPrefix={m.id}
-                        onRetry={m.answer.kind === "unavailable" ? () => retry(m.id) : undefined}
-                      />
+                      <>
+                        <AnswerView
+                          answer={m.answer}
+                          idPrefix={m.id}
+                          onRetry={m.answer.kind === "unavailable" ? () => retry(m.id) : undefined}
+                        />
+                        <SpeakButton answer={m.answer} id={m.id} />
+                      </>
                     ) : (
                       <p className="leading-8">{m.content}</p>
                     )}
@@ -200,7 +225,14 @@ export function AIChat({
             {pending ? (
               <li className="flex gap-3 items-center" aria-busy="true">
                 <Seal searching />
-                <p className="text-sm text-muted">يبحث في المصادر الموثوقة…</p>
+                <p className="inline-flex items-center gap-1.5 text-sm text-muted" role="status">
+                  لحظة
+                  <span className="inline-flex gap-1" aria-hidden>
+                    <span className="size-1.5 rounded-full bg-olive animate-pulse" />
+                    <span className="size-1.5 rounded-full bg-olive animate-pulse [animation-delay:150ms]" />
+                    <span className="size-1.5 rounded-full bg-olive animate-pulse [animation-delay:300ms]" />
+                  </span>
+                </p>
               </li>
             ) : null}
           </ol>
@@ -227,7 +259,7 @@ export function AIChat({
             ) : null}
           </div>
         ) : null}
-        {!empty ? <Suggestions onPick={(s) => void ask(s)} disabled={pending} compact /> : null}
+        {!empty ? <Suggestions onPick={(s) => void ask(s)} disabled={pending} compact items={suggestions} /> : null}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -245,6 +277,7 @@ export function AIChat({
             value={draft}
             maxLength={MAX_LEN}
             onChange={(e) => {
+              setVoiceNote(false);
               setDraft(e.target.value);
               autosize(e.target);
             }}
@@ -253,6 +286,7 @@ export function AIChat({
             aria-describedby={hintId}
             className="min-h-10 flex-1 resize-none bg-transparent py-2 text-[0.95rem] leading-6 text-ink placeholder:text-muted/70 focus:outline-none"
           />
+          {voice.supported ? <VoiceButton state={voice.state} onStart={() => void voice.start()} onStop={voice.stop} disabled={pending} /> : null}
           <button
             type="submit"
             disabled={!draft.trim() || pending}
@@ -262,6 +296,23 @@ export function AIChat({
             <Icon name="send" size={18} />
           </button>
         </form>
+        {voice.state === "recording" ? (
+          <p role="status" className="mt-2 text-xs text-terracotta">
+            نستمع إلى سؤالك… اضغط زر الإيقاف عند الانتهاء.
+          </p>
+        ) : voice.state === "transcribing" ? (
+          <p role="status" className="mt-2 text-xs text-muted">
+            نحوّل صوتك إلى نص…
+          </p>
+        ) : voice.error ? (
+          <p role="alert" className="mt-2 text-xs text-terracotta">
+            {voice.error}
+          </p>
+        ) : voiceNote && draft.trim() ? (
+          <p role="status" className="mt-2 text-xs leading-5 text-ink/80">
+            هذا ما فهمناه من صوتك، وقد يخطئ التعرّف على الكلام. راجع النص وصحّحه إن لزم، ثم اضغط إرسال.
+          </p>
+        ) : null}
         <p id={hintId} className="sr-only">
           اضغط Enter للإرسال، و Shift مع Enter لسطر جديد.
         </p>
@@ -283,7 +334,7 @@ function Seal({ searching = false }: { searching?: boolean }) {
   );
 }
 
-function Welcome({ onPick, contextLabel }: { onPick: (s: string) => void; contextLabel: string | null }) {
+function Welcome({ onPick, contextLabel, items }: { onPick: (s: string) => void; contextLabel: string | null; items: readonly string[] }) {
   return (
     <div className="flex flex-col items-center text-center py-6 sm:py-10">
       <span className="grid place-items-center size-14 rounded-2xl bg-forest text-sand shadow-[var(--shadow-soft)]">
@@ -294,7 +345,7 @@ function Welcome({ onPick, contextLabel }: { onPick: (s: string) => void; contex
         اسأل عن معنى آية، أو قصة قرآنية، أو اطلب اختبارًا في حفظك
         {contextLabel ? ` من ${contextLabel}` : ""}. ستجد مع كل إجابة مصدرها.
       </p>
-      <Suggestions onPick={onPick} className="mt-6 justify-center" />
+      <Suggestions onPick={onPick} className="mt-6 justify-center" items={items} />
     </div>
   );
 }
@@ -304,11 +355,13 @@ function Suggestions({
   disabled,
   compact = false,
   className,
+  items = ASSISTANT_SUGGESTIONS,
 }: {
   onPick: (s: string) => void;
   disabled?: boolean;
   compact?: boolean;
   className?: string;
+  items?: readonly string[];
 }) {
   return (
     <div
@@ -320,7 +373,7 @@ function Suggestions({
         className,
       )}
     >
-      {ASSISTANT_SUGGESTIONS.map((s) => (
+      {items.map((s) => (
         <button
           key={s}
           type="button"

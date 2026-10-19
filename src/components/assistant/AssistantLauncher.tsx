@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import { Icon } from "@/components/ui/Icon";
 import { IconButton } from "@/components/ui/primitives";
 import { getStory } from "@/content/stories";
@@ -31,18 +32,11 @@ export function contextFromPath(pathname: string): AssistantContext | undefined 
 export function AssistantLauncher() {
   const pathname = usePathname() ?? "/";
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDialogElement>(null);
   const routeContext = useMemo(() => contextFromPath(pathname), [pathname]);
   const [cleared, setCleared] = useState(false);
   useEffect(() => setCleared(false), [pathname]);
   const context = cleared ? undefined : routeContext;
 
-  useEffect(() => {
-    const d = ref.current;
-    if (!d) return;
-    if (open && !d.open) d.showModal();
-    if (!open && d.open) d.close();
-  }, [open]);
 
   // close the sheet when navigating (e.g. following a citation into the mushaf)
   useEffect(() => setOpen(false), [pathname]);
@@ -62,11 +56,46 @@ export function AssistantLauncher() {
         <span className="sr-only sm:not-sr-only text-sm font-medium">اسأل مُدّكِر</span>
       </button>
 
+      <AssistantSheet open={open} onClose={() => setOpen(false)} context={context} onClearContext={() => setCleared(true)} />
+    </>
+  );
+}
+
+/**
+ * The assistant side sheet, controlled by its owner so any screen (memorize, recite…) can open it with an exact
+ * ayah context. Native <dialog>: focus containment, Esc to close, focus return.
+ * `ayahRange` shows a small «‹ الآية n ›» picker so the learner always sees — and can change — which ayah "هذه الآية" means.
+ */
+export function AssistantSheet({
+  open,
+  onClose,
+  context,
+  onClearContext,
+  ayahRange,
+  onAyahChange,
+}: {
+  open: boolean;
+  onClose: () => void;
+  context?: AssistantContext;
+  onClearContext?: () => void;
+  ayahRange?: { from: number; to: number };
+  onAyahChange?: (ayah: number) => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (open && !d.open) d.showModal();
+    if (!open && d.open) d.close();
+  }, [open]);
+  const ayah = context?.ayah;
+  const picker = ayahRange && ayah && onAyahChange && ayahRange.to > ayahRange.from;
+  return (
       <dialog
         ref={ref}
-        onClose={() => setOpen(false)}
+        onClose={onClose}
         onClick={(e) => {
-          if (e.target === ref.current) setOpen(false);
+          if (e.target === ref.current) onClose();
         }}
         aria-labelledby="assistant-sheet-title"
         className="fixed inset-y-0 start-0 end-auto m-0 h-dvh max-h-dvh w-full max-w-full sm:w-[30rem] lg:w-[34rem] p-0 bg-paper text-ink shadow-[var(--shadow-lift)] backdrop:bg-scrim/30 backdrop:backdrop-blur-[2px] open:animate-rise"
@@ -92,12 +121,24 @@ export function AssistantLauncher() {
               >
                 فتح في صفحة كاملة
               </Link>
-              <IconButton icon="x" label="إغلاق" onClick={() => setOpen(false)} size={38} />
+              <IconButton icon="x" label="إغلاق" onClick={onClose} size={38} />
             </div>
           </header>
-          <AIChat variant="sheet" context={context} onClearContext={() => setCleared(true)} className="flex-1 min-h-0" />
+          {picker ? (
+            <div className="flex items-center justify-center gap-3 border-b hairline bg-parchment/50 px-4 py-2 text-sm" role="group" aria-label="اختيار الآية">
+              <button type="button" onClick={() => onAyahChange!(Math.max(ayahRange!.from, ayah! - 1))} disabled={ayah! <= ayahRange!.from} aria-label="الآية السابقة" className="grid size-8 place-items-center rounded-lg text-forest hover:bg-white disabled:opacity-30">
+                <Icon name="forward" size={16} />
+              </button>
+              <span className="text-forest">
+                أسأل عن <strong className="num">الآية {toArabicDigits(ayah!)}</strong> من سورة {getSurahMeta(context!.surah!)?.nameAr}
+              </span>
+              <button type="button" onClick={() => onAyahChange!(Math.min(ayahRange!.to, ayah! + 1))} disabled={ayah! >= ayahRange!.to} aria-label="الآية التالية" className="grid size-8 place-items-center rounded-lg text-forest hover:bg-white disabled:opacity-30">
+                <Icon name="back" size={16} />
+              </button>
+            </div>
+          ) : null}
+          <AIChat key={`${context?.surah ?? 0}:${context?.ayah ?? 0}`} variant="sheet" context={context} onClearContext={onClearContext} className="flex-1 min-h-0" />
         </div>
       </dialog>
-    </>
   );
 }

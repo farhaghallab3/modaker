@@ -5,8 +5,7 @@
  * persistence is delegated to a UserDataRepository (local demo or API).
  *
  * Who is signed in comes from Clerk (Google + email): <ClerkBridge> reports the Clerk user and
- * the provider switches `state` to that account's progress. Without Clerk keys nobody can sign
- * in, but the demo still works.
+ * the provider switches `state` to that account's progress. Without Clerk keys nobody can sign in.
  */
 import { useClerk, useUser } from "@clerk/nextjs";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
@@ -14,6 +13,7 @@ import { buildDemoState } from "@/content/demo-seed";
 import { clerkEnabled } from "@/lib/auth/clerk-config";
 import { getSurahMeta } from "@/lib/quran/surahs";
 import { declareMemorized } from "@/lib/review/learning";
+import { weakOrigin } from "@/lib/review/self-review";
 import type {
   AppNotification,
   AyahProgress,
@@ -21,11 +21,12 @@ import type {
   NotificationPreferences,
   RecitationAnalysis,
   ResumePoint,
+  SelfGrade,
   UserProfile,
 } from "@/lib/types";
 import { loadDeviceState, removeDeviceAccount, saveDeviceAccountState } from "./device-accounts";
 import { createRepository, isApiMode } from "./repository";
-import { applyMarkMemorized, applyRecitation } from "./reducers";
+import { applyMarkMemorized, applyRecitation, applySelfReviewRange } from "./reducers";
 import { EMPTY_STATE, todayKey, uid, type Goals, type PrivacySettings, type UserState } from "./state";
 
 export interface OnboardingInput {
@@ -45,6 +46,8 @@ interface Actions {
   completeOnboarding(input: OnboardingInput): void;
   markMemorized(range: AyahRange): void;
   recordRecitation(analysis: RecitationAnalysis): void;
+  /** Self-assessed review of a whole range (ثبتت / ترددت / نسيت). Never recitation evidence. */
+  recordSelfReview(range: AyahRange, grade: SelfGrade): void;
   setResume(point: Omit<ResumePoint, "updatedAt">): void;
   toggleBookmark(key: string): void;
   addToReview(key: string): void;
@@ -238,6 +241,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       recordRecitation(analysis) {
         update((s) => applyRecitation(s, analysis));
       },
+      recordSelfReview(range, grade) {
+        update((s) => applySelfReviewRange(s, range, grade).state);
+      },
       setResume(point) {
         update((s) => ({ ...s, resume: { ...point, updatedAt: new Date().toISOString() } }));
       },
@@ -258,7 +264,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const existing = declareMemorized(s.progress[key], surah, ayah);
           return {
             ...s,
-            progress: { ...s.progress, [key]: { ...existing, status: "weak", nextReviewAt: new Date().toISOString() } },
+            progress: {
+              ...s.progress,
+              // a learner-requested review has no recitation evidence behind it: weakness is "self" unless a confirmed one exists
+              [key]: { ...existing, status: "weak", weakBy: weakOrigin(existing) === "recitation" ? "recitation" : "self", nextReviewAt: new Date().toISOString() },
+            },
           };
         });
       },

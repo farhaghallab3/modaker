@@ -24,9 +24,11 @@
  * Embeds always use youtube-nocookie.com behind a click-to-load facade, so no
  * request reaches YouTube until the learner presses play.
  */
+import { isLearnerVisible } from "@/lib/content-state";
 import type { Video } from "@/lib/types";
 
-export type CuratedVideo = Video & { thumbnail?: string };
+/** `neutralCover`: show a neutral Modaker cover before playback instead of YouTube's own thumbnail (no request to i.ytimg.com). */
+export type CuratedVideo = Video & { thumbnail?: string; neutralCover?: boolean };
 
 const DEMO_CHANNEL = "قناة تعليمية (تجريبي)";
 
@@ -60,6 +62,8 @@ export const VIDEOS: CuratedVideo[] = [
   {
     id: "v-musa-khidr",
     youtubeId: "f7j-KVZ6mRw",
+    // YouTube's thumbnail for this video carries a teaser claim Modaker does not endorse: use the neutral cover until playback
+    neutralCover: true,
     title: "موسى والخضر — أدب طلب العلم",
     channel: "نفحات - Nafahat",
     description: "قصة مروية عن رحلة موسى عليه السلام مع الخضر ومواقفها الثلاثة.",
@@ -67,8 +71,9 @@ export const VIDEOS: CuratedVideo[] = [
     storySlug: "musa-wal-khidr",
     range: { surah: 18, from: 60, to: 82 },
     durationLabel: "١٧ دقيقة",
-    isDemo: true,
-    reviewState: "draft",
+    // reviewed + published: supplementary viewing for the Musa / al-Khidr passage only; Modaker does not repeat or endorse the video's teaser claim about al-Khidr
+    isDemo: false,
+    reviewState: "published",
   },
   {
     id: "v-dhul-qarnayn",
@@ -80,8 +85,9 @@ export const VIDEOS: CuratedVideo[] = [
     storySlug: "dhul-qarnayn",
     range: { surah: 18, from: 83, to: 98 },
     durationLabel: "١٤ دقيقة",
-    isDemo: true,
-    reviewState: "draft",
+    // reviewed + published: supplementary viewing only (external video): not Quran/tafsir evidence
+    isDemo: false,
+    reviewState: "published",
   },
   {
     id: "v-maryam-story",
@@ -178,8 +184,9 @@ export const VIDEOS: CuratedVideo[] = [
     surah: 5,
     range: { surah: 5, from: 27, to: 31 },
     durationLabel: "١١ دقيقة",
-    isDemo: true,
-    reviewState: "draft",
+    // reviewed + published: supplementary viewing only (external video): not Quran/tafsir evidence
+    isDemo: false,
+    reviewState: "published",
   },
   {
     id: "v-hud",
@@ -213,21 +220,27 @@ export const VIDEOS: CuratedVideo[] = [
     description: "مقطع قصير للشيخ أ.د. عبدالعزيز الفوزان عن فضل قراءة سورة الملك كل ليلة قبل النوم.",
     surah: 67,
     durationLabel: "دقيقتان",
-    isDemo: true,
-    reviewState: "draft",
+    // reviewed + published: supplementary viewing only (external video): its virtue claim is NOT assistant evidence
+    isDemo: false,
+    reviewState: "published",
   },
 ];
 
+/** The videos a learner may see: reviewed + published only (see isLearnerVisible). */
+export function visibleVideos(): CuratedVideo[] {
+  return VIDEOS.filter(isLearnerVisible);
+}
+
 export function getVideo(id: string): CuratedVideo | undefined {
-  return VIDEOS.find((v) => v.id === id);
+  return visibleVideos().find((v) => v.id === id);
 }
 
 export function videosForStory(slug: string): CuratedVideo[] {
-  return VIDEOS.filter((v) => v.storySlug === slug);
+  return visibleVideos().filter((v) => v.storySlug === slug);
 }
 
 export function videosForSurah(n: number): CuratedVideo[] {
-  return VIDEOS.filter((v) => v.surah === n);
+  return visibleVideos().filter((v) => v.surah === n);
 }
 
 /** YouTube ids are exactly 11 chars of [A-Za-z0-9_-]. Anything else is treated as missing. */
@@ -235,7 +248,8 @@ export function isValidYouTubeId(id: string | null | undefined): id is string {
   return !!id && /^[A-Za-z0-9_-]{11}$/.test(id);
 }
 
-export function videoThumbnail(v: Pick<CuratedVideo, "youtubeId" | "thumbnail">): string | null {
+export function videoThumbnail(v: Pick<CuratedVideo, "youtubeId" | "thumbnail" | "neutralCover">): string | null {
+  if (v.neutralCover) return null; // neutral Modaker cover (YouTube's thumbnail carries a teaser claim we do not present)
   if (v.thumbnail) return v.thumbnail;
   return isValidYouTubeId(v.youtubeId) ? `https://i.ytimg.com/vi/${v.youtubeId}/hqdefault.jpg` : null;
 }

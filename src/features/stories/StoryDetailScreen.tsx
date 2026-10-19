@@ -83,15 +83,10 @@ export function StoryDetailScreen() {
         </div>
       </header>
 
-      {needsDemoNotice(story) ? (
-        <p role="note" className="mb-10 flex items-start gap-2.5 rounded-2xl bg-sand-100/70 px-4 py-3 text-sm leading-6 text-sand-800">
-          <Icon name="info" size={18} className="mt-0.5 shrink-0" />
-          <span>
-            <strong className="font-semibold">{DEMO_CONTENT_LABEL}.</strong> المقدمة وملخصات الفصول ليست تفسيرًا؛ نص الآيات من
-            المصحف الموثّق والتفسير من التفسير الميسر.
-          </span>
-        </p>
-      ) : null}
+      <p role="note" className="mb-10 flex items-start gap-2.5 rounded-2xl bg-sand-100/70 px-4 py-3 text-sm leading-6 text-sand-800">
+        <Icon name="info" size={18} className="mt-0.5 shrink-0" />
+        <span>المقدمة وملخصات الفصول ليست تفسيرًا؛ نص الآيات من المصحف الموثّق والتفسير من التفسير الميسر.</span>
+      </p>
 
       <div className="grid gap-10 lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-14">
         {/* ── Timeline ──────────────────────────────────────────────── */}
@@ -153,7 +148,7 @@ export function StoryDetailScreen() {
           </h2>
           <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <div>
-              <YouTubeEmbed youtubeId={video.youtubeId} title={video.title} thumbnail={video.thumbnail} />
+              <YouTubeEmbed youtubeId={video.youtubeId} title={video.title} thumbnail={video.thumbnail} neutralCover={video.neutralCover} />
               <p className="mt-3 font-medium text-forest">{video.title}</p>
               <p className="text-sm text-muted leading-7">{video.description}</p>
             </div>

@@ -28,19 +28,24 @@ import type { LLMProvider } from "../llm/provider";
 import type { QuranProvider, TafsirSlug } from "../quran/common";
 import { filterCitations, verifyGeneratedAnswer, type VerifyIssue } from "../safety/answer-verifier";
 import { NO_HADITH_PROVIDER, type HadithProvider } from "../safety/hadith";
+import { HADEETHENC_SITE_NAME } from "../hadith/hadeethenc";
 import type { QuoteMatch, QuranQuoteIndex } from "../safety/quote-verifier";
 import { applyClassifiers, routeDeterministic, type Intent, type RouteDecision, type SafetyClassifier } from "../safety/router";
 import { TEMPLATES } from "../safety/templates";
 import { buildUserMessage, INSUFFICIENT_SENTINEL, passageLabel, SYSTEM_PROMPT } from "./prompt";
 import { buildQuiz } from "./quiz";
-import { parseReferences, rangeSize, type ParsedReferences, type ReferenceContext } from "./references";
+import { findReferences, parseReferences, rangeSize, type ParsedReferences, type ReferenceContext } from "./references";
 import { ayahRefLabel, quranComUrl, TafsirRetriever, type Passage, type Retriever } from "./retriever";
-import { getSource, isApproved } from "./sources";
+import { getSource, hasApprovedAsbabSource, isApproved } from "./sources";
+import { resolveStoryRanges, spreadRanges } from "./story-ranges";
+import { webFallbackEligible } from "../safety/web-gate";
 import type { WebAnswerer } from "./web-answer";
 
 export interface AskInput {
   question: string;
   context?: ReferenceContext;
+  /** Per-user / per-IP key for the web-fallback budget (cost protection). */
+  clientKey?: string;
 }
 
 export interface AssistantDeps {
@@ -56,7 +61,7 @@ export interface AssistantDeps {
   /** Lazy provider of the verified-Quran quotation index. Omit to skip quotation checks. */
   quoteIndex?: () => Promise<QuranQuoteIndex>;
   hadith?: HadithProvider;
-  /** Web-grounded answers from trusted Islamic sites (null/absent → retrieval only). */
+  /** Trusted-web fallback for ordinary Islamic factual questions (null/absent → local sources only). */
   web?: WebAnswerer | null;
 }
 
@@ -190,6 +195,15 @@ export function createAssistant(deps: AssistantDeps) {
     decision = await applyClassifiers(decision, q, deps.classifiers);
     // References come from the ORIGINAL text: cleaning for routing normalises away "1-3" and "19:32".
     let refs = parseReferences(q, context);
+    // A Quranic story named in the question (and no explicit ayah): answer from the tafsir of its fixed Quran range.
+    let storyMode = false;
+    if (!refs.ranges.length && decision.level === "B") {
+      const story = resolveStoryRanges(q);
+      if (story) {
+        refs = { surahs: [story[0].surah], ranges: spreadRanges(story, PASSAGE_LIMIT + 4), fromContext: false };
+        storyMode = true;
+      }
+    }
     const meta = { decision, refs, passages: 0, issues: [] as VerifyIssue[] };
 
     const finish = (p: Parts): AssistantResult => {
@@ -240,6 +254,7 @@ export function createAssistant(deps: AssistantDeps) {
         no_evidence: TEMPLATES.abstain.text,
         no_fiqh_source: TEMPLATES.fiqhNoMaterial.text,
         no_hadith_source: `${TEMPLATES.abstain.text} ${TEMPLATES.noHadithSource.text}`,
+        no_asbab_source: TEMPLATES.noAsbabSource.text,
         language_unsupported: TEMPLATES.language.text,
         unverified_generation: TEMPLATES.abstain.text,
         needs_clarification: TEMPLATES.quoteClarify.text,
@@ -276,18 +291,47 @@ export function createAssistant(deps: AssistantDeps) {
       if (decision.intent === "non-arabic") return abstain("language_unsupported", { provider: "guard" });
 
       // ── hadith: never from memory ───────────────────────────────────────
-      if (decision.intent === "hadith-request") {
-        if (!hadith.available) return (await webAnswer()) ?? abstain("no_hadith_source", { provider: "hadith:none" });
-        const found = await hadith.find(decision.cleanedQuestion);
+      // A hadith REQUEST goes to the approved hadith source only (never to the web fallback). A ruling-like (Level C) question that merely
+      // mentions a hadith is a fiqh question: it skips this branch and meets the fiqh rules below.
+      if (decision.intent === "hadith-request" && decision.level !== "C") {
+        if (!hadith.available) return abstain("no_hadith_source", { provider: "hadith:none" });
+        const found = await hadith.find(q);
         if (!found.length) return abstain("no_hadith_source", { provider: `hadith:${hadith.id}` });
-        const citations: Citation[] = found.map((h) => ({ sourceId: h.sourceId, title: h.reference, ref: h.reference, excerpt: truncate(h.text, 240), sourceKind: "hadith" }));
+        const citations: Citation[] = found.map((h) => ({
+          sourceId: h.sourceId,
+          title: h.sourceTitle ?? HADEETHENC_SITE_NAME,
+          ref: h.id ? `رقم الحديث ${h.id}` : h.reference,
+          excerpt: truncate(h.text, 240),
+          url: h.url,
+          sourceKind: "hadith",
+        }));
+        // plain-text rendering of the same verbatim fields (history, accessibility); the UI shows the typed blocks
+        const plain = found
+          .map((h) => [h.text, `الدرجة: ${h.grade}`, h.attribution ? `العزو: ${h.attribution}` : "", `المرجع: ${h.reference}`, `المصدر: ${h.sourceTitle ?? HADEETHENC_SITE_NAME}${h.url ? ` — ${h.url}` : ""}`].filter(Boolean).join("\n"))
+          .join("\n\n");
         return finish({
           type: "sourced_explanation",
-          text: compose(found.map((h) => `${h.text}\n(${h.reference} — ${h.grade})`).join("\n\n")),
+          text: compose(plain),
           provider: `hadith:${hadith.id}`,
           citations,
           blocks: [...preBlocks, ...found],
         });
+      }
+
+      // ── asbab al-nuzul: only from an approved asbab source — never tafsir presented as a reason of revelation ──
+      if (decision.intent === "asbab" && !hasApprovedAsbabSource()) {
+        let attach: Ayah[] | undefined;
+        let quranBlocks: AnswerBlock[] = [];
+        try {
+          if (refs.ranges.length && rangeSize(refs.ranges) <= ATTACH_VERSES_MAX) {
+            attach = await loadVerses(deps.quran, refs.ranges, ATTACH_VERSES_MAX);
+            const source = (await deps.quran.getSurah(refs.ranges[0].surah)).source;
+            if (attach.length) quranBlocks = [{ type: "quran", verses: attach, source }];
+          }
+        } catch {
+          attach = undefined;
+        }
+        return abstain("no_asbab_source", { provider: "guard:asbab", verses: attach, blocks: quranBlocks });
       }
 
       // ── deterministic Quran intents (Level A) ───────────────────────────
@@ -334,15 +378,30 @@ export function createAssistant(deps: AssistantDeps) {
         refs = { surahs: [quote.match.surah], ranges: [{ surah: quote.match.surah, from: quote.match.from, to: quote.match.to }], fromContext: false };
       }
 
-      // ── web-grounded answer from trusted sites (Level B, or C) ─────────
-      if (!correction) {
-        const web = await webAnswer();
-        if (web) return web;
-      }
-
-      // ── grounded path (Level B, or C) ───────────────────────────────────
+      // ── grounded path (Level B, or C): approved sources are authoritative ──
       const grounded = await groundedAnswer(refs, decision, preTexts, preBlocks);
-      if (!correction) return grounded;
+      if (!correction) {
+        // Optional trusted-web fallback (explicit opt-in). Used ONLY when the approved local sources found nothing AND the
+        // question is an ordinary Level B factual one (see web-gate.ts) — never in place of local evidence, never for
+        // Quran/tafsir, hadith, fiqh, personal, asbab or off-topic questions.
+        if (grounded.abstained && grounded.abstainReason === "no_evidence" && deps.web) {
+          const explicitRefs = !refs.fromContext && (refs.ranges.length > 0 || refs.surahs.length > 0);
+          const eligible = webFallbackEligible({
+            question: q,
+            level: decision.level,
+            intent: decision.intent,
+            injection: Boolean(decision.flags.injection),
+            rulingRequest: decision.flags.rulingRequest,
+            explicitRefs,
+            storyMode,
+          });
+          if (eligible) {
+            const web = await webAnswer();
+            if (web) return web;
+          }
+        }
+        return grounded;
+      }
       // Prepend the correction so the user sees the verified text before the explanation.
       const citations = [correction.citation, ...grounded.citations];
       const shift = (t: string) => t.replace(/\[(\d{1,2})\]/g, (_m, d) => `[${Number(d) + 1}]`);
@@ -371,15 +430,14 @@ export function createAssistant(deps: AssistantDeps) {
     // ── flows ─────────────────────────────────────────────────────────────
 
     /**
-     * Answer from trusted Islamic websites. null → not available or nothing reliable found, so the
-     * caller continues with its usual path. Never used for injection attempts.
+     * Answer an ordinary factual question from the allow-listed trusted sites. null → nothing reliable found / failed / over budget,
+     * so the caller keeps its abstention. Every shown answer carries allow-listed citations (enforced in web-answer.ts).
      */
     async function webAnswer(): Promise<AssistantResult | null> {
-      if (!deps.web || decision.flags.injection) return null;
-      const sensitive = decision.level === "C";
+      if (!deps.web) return null;
       let res;
       try {
-        res = await deps.web.answer(decision.cleanedQuestion || q, { sensitive });
+        res = await deps.web.answer(decision.cleanedQuestion || q);
       } catch (e) {
         console.warn("[assistant] web answer failed:", (e as Error).message);
         return null;
@@ -387,45 +445,13 @@ export function createAssistant(deps: AssistantDeps) {
       if (res.status === "out_of_scope") return abstain("out_of_scope", { provider: deps.web.id });
       if (res.status === "needs_scholar") return referral();
       if (res.status !== "answered") return null;
-
-      // Verses the answer refers to are shown from the verified Mushaf, never from the model.
-      const cited = parseReferences(res.text);
-      const ranges = cited.ranges.length ? cited.ranges : refs.ranges;
-      let verses: Ayah[] | undefined;
-      const citations = [...res.citations];
-      const quranBlocks: AnswerBlock[] = [];
-      if (ranges.length && rangeSize(ranges) <= ATTACH_VERSES_MAX) {
-        try {
-          verses = await loadVerses(deps.quran, ranges, ATTACH_VERSES_MAX);
-          if (verses.length) {
-            const source = (await deps.quran.getSurah(verses[0].surah)).source;
-            quranBlocks.push({ type: "quran", verses, source });
-            citations.push(quranCitation(source, groupRanges(verses)));
-          }
-        } catch {
-          verses = undefined; // the answer stands on its own sources
-        }
-      }
-      const preface: AnswerBlock[] = sensitive
-        ? [{ type: "warning", text: TEMPLATES.sensitiveC.text, code: "sensitive", templateId: TEMPLATES.sensitiveC.id, templateVersion: TEMPLATES.sensitiveC.version }]
-        : [];
-      const note: AnswerBlock[] = sensitive
-        ? [{ type: "warning", text: TEMPLATES.consultScholar.text, code: "sensitive", templateId: TEMPLATES.consultScholar.id, templateVersion: TEMPLATES.consultScholar.version }]
-        : [];
       return finish({
-        type: sensitive ? "sensitive_sourced" : "sourced_explanation",
-        text: compose(sensitive ? TEMPLATES.sensitiveC.text : undefined, res.text, sensitive ? TEMPLATES.consultScholar.text : undefined),
-        provider: res.model ? `anthropic-web:${res.model}` : deps.web.id,
-        citations,
-        verses,
+        type: "sourced_explanation",
+        text: compose(res.text),
+        provider: deps.web.id,
+        citations: res.citations,
         generationUsed: true,
-        blocks: [
-          ...preBlocks,
-          ...preface,
-          { type: "explanation", text: res.text, origin: "generated", citations: res.citations.map((_, i) => i + 1) },
-          ...note,
-          ...quranBlocks,
-        ],
+        blocks: [...preBlocks, { type: "explanation", text: res.text, origin: "generated", citations: res.citations.map((_, k) => k + 1) }],
       });
     }
 
@@ -455,7 +481,8 @@ export function createAssistant(deps: AssistantDeps) {
       let citations: Citation[] = [];
       let verses: Ayah[] | undefined;
       const blocks: AnswerBlock[] = [...preBlocks, { type: "referral", text: TEMPLATES.referralD.text, templateId: TEMPLATES.referralD.id, templateVersion: TEMPLATES.referralD.version }];
-      if (refs.ranges.length) {
+      // (an ayah that only came from the screen the learner is on is NOT a reference made in the question)
+      if (refs.ranges.length && !refs.fromContext) {
         try {
           const tafsir = new TafsirRetriever(deps.quran, deps.tafsir ?? "muyassar", ATTACH_VERSES_MAX);
           const passages = (await tafsir.retrieve("", { refs, limit: 3 })).slice(0, 3);
@@ -532,11 +559,21 @@ export function createAssistant(deps: AssistantDeps) {
     }
 
     async function groundedAnswer(r: ParsedReferences, d: RouteDecision, pre: string[], preB: AnswerBlock[]): Promise<AssistantResult> {
-      const passages = await deps.retriever.retrieve(d.cleanedQuestion || q, { refs: r, limit: PASSAGE_LIMIT });
+      // A disputed / sensitive (Level C) question must not be answered with the tafsir of whatever ayah the learner
+      // happens to be viewing: an ayah that only came from the screen is not a reference made in the question.
+      if (d.level === "C" && r.fromContext) r = { ...r, surahs: [], ranges: [], fromContext: false };
+      // «هذه الآية» but the screen only knows a surah: never pick an ayah for the learner — ask which one.
+      if (d.level !== "C" && r.fromContext && !r.ranges.length && findReferences(q).deictic) {
+        return finish({ type: "clarification", text: compose(TEMPLATES.ayahNeeded.text), provider: "guard:ayah-needed", abstain: "needs_clarification" });
+      }
+      // Whole-corpus search is for ordinary (Level B) questions only: fiqh (C) needs an approved fiqh source, not tafsir keywords.
+      const broad = d.level === "B" && (d.intent === "general" || d.intent === "explain" || d.intent === "word-meaning" || d.intent === "story");
+      const passages = await deps.retriever.retrieve(d.cleanedQuestion || q, { refs: r, limit: PASSAGE_LIMIT, broad });
       meta.passages = passages.length;
 
       const size = rangeSize(r.ranges);
-      const verses = r.ranges.length ? await loadVerses(deps.quran, r.ranges, Math.min(size, QURAN_TEXT_MAX)) : [];
+      // A story is told by its tafsir passages: sampled ayahs are not shown as "the verses of the answer".
+      const verses = r.ranges.length && !storyMode ? await loadVerses(deps.quran, r.ranges, Math.min(size, QURAN_TEXT_MAX)) : [];
       const attach = verses.length && size <= ATTACH_VERSES_MAX ? verses : undefined;
       const sourceOf = async () => (await deps.quran.getSurah(r.ranges[0].surah)).source;
       const quranBlock = async (): Promise<AnswerBlock[]> => (attach?.length ? [{ type: "quran", verses: attach, source: await sourceOf() }] : []);
@@ -577,9 +614,9 @@ export function createAssistant(deps: AssistantDeps) {
       const { content, used } = buildUserMessage(d.cleanedQuestion || q, passages, d.intent as Intent);
       const raw = await llm.complete({ system: SYSTEM_PROMPT, messages: [{ role: "user", content }], maxTokens: 700, temperature: 0.2 });
 
-      const consulted = used.slice(0, EXTRACTIVE_TOP);
       if (!raw || raw.includes(INSUFFICIENT_SENTINEL)) {
-        return abstain("no_evidence", { provider: llm.id, citations: consulted.map(passageCitation), verses: attach });
+        // The passages did not answer the question: show no citation and no verses, as nothing was supported by them.
+        return abstain("no_evidence", { provider: llm.id });
       }
 
       const verified = verifyGeneratedAnswer(
@@ -665,15 +702,21 @@ export async function answerQuestion(input: AskInput): Promise<AssistantAnswer> 
   const parts: Retriever[] = [new retrievers.TafsirRetriever(quran, "muyassar")];
   const embedder = getEmbeddingProvider();
   if (hasDatabase() && embedder) parts.push(new retrievers.PgVectorRetriever(embedder));
-  const { ClaudeWebAnswerer, DEFAULT_TRUSTED_DOMAINS } = await import("./web-answer");
+  const { OpenAiWebAnswerer, BudgetedWebAnswerer, DEFAULT_TRUSTED_DOMAINS } = await import("./web-answer");
   const domains = env.assistantTrustedDomains();
   const web =
-    env.assistantWebSearch() && env.anthropicApiKey()
-      ? new ClaudeWebAnswerer(env.anthropicApiKey(), env.assistantWebModel(), domains.length ? domains : DEFAULT_TRUSTED_DOMAINS)
+    env.assistantWebSearch() && env.openaiApiKey()
+      ? new BudgetedWebAnswerer(
+          new OpenAiWebAnswerer(env.openaiApiKey(), env.assistantWebModel(), domains.length ? domains : DEFAULT_TRUSTED_DOMAINS),
+          input.clientKey ?? "anon",
+          env.assistantWebDailyCap(),
+        )
       : null;
+  const { hadithProviderFromEnv } = await import("../hadith/hadeethenc");
   const assistant = createAssistant({
     quran,
     web,
+    hadith: hadithProviderFromEnv(),
     retriever: new retrievers.HybridRetriever(parts),
     llm: getLlmProvider(),
     generationEnabled: env.assistantGeneration(),
@@ -681,5 +724,8 @@ export async function answerQuestion(input: AskInput): Promise<AssistantAnswer> 
   });
   const { meta, ...answer } = await assistant.answer(input);
   if (meta?.issues.length) console.warn("[assistant] verifier removed:", meta.issues.map((i) => i.code).join(","));
-  return answer;
+  // Speaker button: only the generated explanation text, signed so the speech endpoint cannot be used as a generic TTS proxy.
+  const { speechFor } = await import("../tts/speech");
+  const speech = speechFor(answer);
+  return speech ? { ...answer, speech } : answer;
 }

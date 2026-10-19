@@ -3,7 +3,7 @@
 import { SignIn } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
 import { clerkEnabled } from "@/lib/auth/clerk-config";
-import { AuthUnavailable, DemoLink, safeNext } from "./AuthParts";
+import { AuthUnavailable, safeNext } from "./AuthParts";
 
 /** Sign in with Google or email — handled entirely by Clerk. */
 export function LoginScreen() {
@@ -15,7 +15,6 @@ export function LoginScreen() {
       ) : (
         <AuthUnavailable />
       )}
-      <DemoLink />
     </>
   );
 }

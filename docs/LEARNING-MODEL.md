@@ -93,3 +93,28 @@ Verified live (production build, real MediaRecorder + Whisper + save): the store
 * Existing inflated completion (ayahs whose only evidence is a failed attempt) is not retroactively reverted. Decide whether to offer a "re-declare / re-verify" action.
 * `RecitationSession` (server) records every analysed attempt, including unsaved ones; progress only changes on save. If attempts should count, save-on-analyze is a product decision.
 * Per-attempt result labels («متقن», «تحتاج مراجعة», «لم تُقرأ») describe **one attempt**, not the ayah's mastery; the wording on the feedback screen was left unchanged.
+
+## Self-assessed review (ثبتت / ترددت / نسيت)
+
+A learner can complete a due review without speech recognition. It **complements** recitation and is never mistaken for it.
+Code: `src/lib/review/self-review.ts` (pure), `reducers.applySelfReviewRange`, UI in `src/components/review/SelfReview.tsx`.
+
+| choice | ease | interval | status | streaks |
+|---|---|---|---|---|
+| ثبتت | unchanged | `min(round(prev×ease), max(7, prev))` (≥1); **unchanged** for recitation-origin weakness (schedule stays as the recitation set it) | self-weak → memorized; recitation-weak stays weak; mastered stays | `selfStreak`+1; verified `streak` unchanged |
+| ترددت | −0.14 | `max(1, round(prev/2))` | self-weak → memorized; recitation-weak stays; mastered → memorized | `selfStreak`=0; `streak`−1 |
+| نسيت | −0.54 (floor 1.3) | 1 day | weak (`weakBy="self"`; stays `"recitation"` if it already was) | both 0 |
+
+Guarantees (reducer-level, tested in `tests/self-review.test.ts`):
+- never touches `recent[]`, `accuracy`, `successCount`, `mistakeCount` (stored in a separate `selfReviews[]` with `source:"self"`);
+- self-review alone can never reach `mastered` (30 consecutive ثبتت still ≤ 7-day interval, not mastered);
+- **recitation weakness outranks self weakness**: `weakBy="recitation"` is never overwritten, cleared or softened by a self-review; only a later valid recitation clears it (legacy weak rows derive their origin from `recent[]`);
+- a recitation made today (passed or failed) decides the day for that ayah; a recitation after a self-review supersedes it (`selfBefore` dropped);
+- one credited assessment per ayah per local day; equal/better repeats are ignored; a WORSE one replaces it, recomputed from `selfBefore` (the state before the day's first assessment);
+- a ثبتت on an ayah that is not due grows nothing; lowering is always honoured;
+- **self evidence may make a recitation-origin weakness more conservative, never less**: on `weakBy="recitation"` a ثبتت only records the review (history, `lastReviewedAt`) — interval, `nextReviewAt`, ease, streaks and status are untouched; ترددت / نسيت may only pull the next review closer, never later;
+- applies to the whole ReviewCard range (no per-ayah picker in the MVP).
+
+Offered when: the learner chooses «راجعت دون تسميع» on a due/weak review card; or after a recitation for the ayahs it could not decide (uncertain, poor recognition, practice-only recognizer). Never for ayahs with a confirmed recitation outcome.
+UI wording keeps the two kinds of evidence apart: «آخر تقييم: ذاتي — …» and «آخر تسميع مؤكّد: <date>».
+Persistence: the snapshot (`UserStateSnapshot`) stays the source of truth; new optional fields are whitelisted in `ayahProgressSchema`; the Prisma review tables are untouched.
