@@ -37,6 +37,9 @@ import { buildQuiz } from "./quiz";
 import { findReferences, parseReferences, rangeSize, type ParsedReferences, type ReferenceContext } from "./references";
 import { ayahRefLabel, quranComUrl, TafsirRetriever, type Passage, type Retriever } from "./retriever";
 import { getSource, hasApprovedAsbabSource, isApproved } from "./sources";
+import { surahFact } from "./surah-facts";
+import { wordMeaningTarget } from "./word-meaning";
+import { resolveNamedPassage } from "./named-passages";
 import { resolveStoryRanges, spreadRanges } from "./story-ranges";
 import { webFallbackEligible } from "../safety/web-gate";
 import type { WebAnswerer } from "./web-answer";
@@ -198,7 +201,7 @@ export function createAssistant(deps: AssistantDeps) {
     // A Quranic story named in the question (and no explicit ayah): answer from the tafsir of its fixed Quran range.
     let storyMode = false;
     if (!refs.ranges.length && decision.level === "B") {
-      const story = resolveStoryRanges(q);
+      const story = resolveStoryRanges(q) ?? resolveNamedPassage(q);
       if (story) {
         refs = { surahs: [story[0].surah], ranges: spreadRanges(story, PASSAGE_LIMIT + 4), fromContext: false };
         storyMode = true;
@@ -338,6 +341,27 @@ export function createAssistant(deps: AssistantDeps) {
       if (decision.intent === "quran-text") return await quranText();
       if (decision.intent === "quiz") return await quiz();
 
+      // ── facts about a surah (ayah count, Meccan/Medinan, order, page): verified metadata, no search ──
+      const fact = surahFact(q, refs.surahs);
+      if (fact) {
+        const source = (await deps.quran.getSurah(fact.surah)).source;
+        const citation: Citation = {
+          sourceId: source.id,
+          title: source.title,
+          ref: `سورة ${getSurahMeta(fact.surah)?.nameAr ?? fact.surah}`,
+          excerpt: "بيانات السورة من المصحف الموثّق.",
+          url: quranComUrl(fact.surah),
+          sourceKind: "quran",
+        };
+        return finish({
+          type: "sourced_explanation",
+          text: compose(fact.text),
+          provider: "quran-metadata",
+          citations: [citation],
+          blocks: [...preBlocks, { type: "explanation", text: fact.text, origin: "template", citations: [1] }],
+        });
+      }
+
       // ── quotation check: never reason over a corrupted ayah ─────────────
       let correction: { text: string; blocks: AnswerBlock[]; verses: Ayah[]; citation: Citation } | null = null;
       const quote = await checkQuote(q);
@@ -376,6 +400,19 @@ export function createAssistant(deps: AssistantDeps) {
         }
       } else if (quote?.status === "exact" && !refs.ranges.length && quote.match.to - quote.match.from < ATTACH_VERSES_MAX) {
         refs = { surahs: [quote.match.surah], ranges: [{ surah: quote.match.surah, from: quote.match.from, to: quote.match.to }], fromContext: false };
+      }
+
+      // ── «ما معنى كلمة …»: answer from the tafsir of the ayah the word is actually in ──
+      if (!correction && !refs.ranges.length && !refs.surahs.length && deps.quoteIndex) {
+        const target = wordMeaningTarget(q);
+        if (target) {
+          const index = await deps.quoteIndex();
+          let hits = index.findWord(target);
+          if (!hits.length && !target.startsWith("ال")) hits = index.findWord(`ال${target}`);
+          if (hits.length) {
+            refs = { surahs: [hits[0].surah], ranges: hits.slice(0, 3).map((h) => ({ surah: h.surah, from: h.ayah, to: h.ayah })), fromContext: false };
+          }
+        }
       }
 
       // ── grounded path (Level B, or C): approved sources are authoritative ──

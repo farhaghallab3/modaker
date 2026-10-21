@@ -97,6 +97,8 @@ export function keywordScore(terms: string[], text: string): number {
 
 // ── Whole-corpus tafsir index (built once per provider, in memory) ────────
 
+/** Surahs this short are explained as a whole when asked about by name. */
+const SHORT_SURAH_AYAHS = 11;
 const BROAD_MIN_COVERAGE = 0.5;
 const BROAD_MAX_DF = 300;
 const BM25_K1 = 1.2;
@@ -192,7 +194,10 @@ export class TafsirRetriever implements Retriever {
         bm25 += (idf[i] * tf * (BM25_K1 + 1)) / (tf + BM25_K1 * (1 - BM25_B + (BM25_B * row.len) / index.avgLen));
       });
       const coverage = got / total;
-      if (coverage >= BROAD_MIN_COVERAGE) hits.push({ e: row.e, coverage, bm25 });
+      // With two or more distinctive words, one rare word alone (e.g. «الأركان» for «أركان الإسلام») is not
+      // evidence that the passage answers the question.
+      const matched = terms.filter((t) => row.tf.has(t)).length;
+      if (coverage >= BROAD_MIN_COVERAGE && (terms.length < 2 || matched >= 2)) hits.push({ e: row.e, coverage, bm25 });
     }
     // Gate on term coverage (above); rank by BM25 so a passage that is ABOUT the topic beats one that mentions it in passing.
     hits.sort((a, b) => b.bm25 - a.bm25);
@@ -232,12 +237,24 @@ export class TafsirRetriever implements Retriever {
     for (const surah of refs.surahs.slice(0, 2)) {
       const entries = await this.quran.getTafsir(surah, this.slug);
       if (!terms.length) {
-        out.push(...entries.slice(0, Math.min(limit, 3)).map((e) => this.toPassage(e, sourceId, 0.35)));
+        // «ما معنى سورة الإخلاص»: a short surah's whole tafsir answers the question (it is evidence);
+        // a long surah's opening entries do not, so they stay below the evidence threshold.
+        const short = (getSurahMeta(surah)?.ayahCount ?? Infinity) <= SHORT_SURAH_AYAHS;
+        out.push(...(short ? entries.map((e) => this.toPassage(e, sourceId, 0.6)) : entries.slice(0, Math.min(limit, 3)).map((e) => this.toPassage(e, sourceId, 0.35))));
         continue;
       }
+      const index = await tafsirIndex(this.quran, this.slug);
+      const distinctive = (t: string) => (index.df.get(t) ?? 0) > 0 && (index.df.get(t) ?? 0) <= BROAD_MAX_DF;
       const ranked = entries
-        .map((e) => ({ e, s: keywordScore(terms, e.text) }))
-        .filter((x) => x.s > 0)
+        .map((e) => {
+          const bag = new Set(tokenize(e.text).map(stem));
+          const matched = terms.filter((t) => bag.has(t));
+          return { e, s: keywordScore(terms, e.text), matched };
+        })
+        // One shared word is evidence only when the question has one word and it is distinctive; otherwise
+        // at least two of the question's words must be in the passage. (Before, any overlap scored ≥ 0.4,
+        // so «كم عدد آيات البقرة» returned 2:80 for containing «العدد».)
+        .filter((x) => (terms.length < 2 ? x.matched.length === 1 && distinctive(x.matched[0]) : x.matched.length >= 2))
         .sort((x, y) => y.s - x.s)
         .slice(0, limit);
       out.push(...ranked.map((x) => this.toPassage(x.e, sourceId, 0.4 + 0.5 * x.s)));

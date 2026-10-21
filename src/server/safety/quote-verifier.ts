@@ -145,6 +145,25 @@ export class QuranQuoteIndex {
     return this.entries.length;
   }
 
+  /**
+   * Ayahs whose verified text contains `word` as a whole word (diacritics ignored; a single attached
+   * و/ف/ب/ل prefix allowed, so «الصمد» also matches «والصمد»). Used to answer «ما معنى كلمة …» from the
+   * tafsir of the ayah the word is actually in, instead of from any passage that mentions it.
+   */
+  findWord(word: string, max = 6): { surah: number; ayah: number }[] {
+    const target = tokenize(word)[0];
+    if (!target || target.length < 2) return [];
+    const out: { surah: number; ayah: number }[] = [];
+    for (const e of this.entries) {
+      if (e.from !== e.to) continue; // single-ayah entries only
+      if (e.words.some((w) => w === target || (w.length === target.length + 1 && /^[وفبل]/.test(w) && w.slice(1) === target))) {
+        out.push({ surah: e.surah, ayah: e.from });
+        if (out.length >= max) break;
+      }
+    }
+    return out;
+  }
+
   check(question: string): QuoteResult {
     const { spans, explicit } = extractSpans(question);
     let best: QuoteResult = { status: "none" };
