@@ -17,8 +17,8 @@ import { FocusActionBar, FocusHeader } from "@/features/focus/FocusHeader";
 import { SOURCE_UNAVAILABLE } from "@/features/quran/states";
 import { api, useOnline, useSurah } from "@/lib/api";
 import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
-import { analyzeRecitation } from "@/lib/recitation/compare";
-import { clampRange, firstWord, memorizedRanges } from "@/lib/recitation/ranges";
+import { analyzeRecitationWithOverrun } from "@/lib/recitation/compare";
+import { MAX_RECITE_AYAHS, clampRange, firstWord, memorizedRanges } from "@/lib/recitation/ranges";
 import { simulateTranscript } from "@/lib/recitation/simulate";
 import { ayahCountLabel, rangeLabel, relativeDueLabel } from "@/lib/review/labels";
 import { useApp } from "@/lib/store/AppProvider";
@@ -175,6 +175,9 @@ function ReciteSession({
   const resultRef = useRef<HTMLDivElement>(null);
   const versesRef = useRef(verses);
   versesRef.current = verses;
+  // The ayahs right after the range, in case the learner keeps reciting past its end.
+  const followingRef = useRef<typeof verses>([]);
+  followingRef.current = (surah.data?.ayahs ?? []).filter((a) => a.ayah > range.to && a.ayah < range.from + MAX_RECITE_AYAHS);
 
   const analyze = useCallback(
     async (t: Transcript) => {
@@ -190,7 +193,7 @@ function ReciteSession({
         // API unreachable → same pure analysis on the verified verses already loaded.
         const vs = versesRef.current;
         if (vs.length === range.to - range.from + 1) {
-          setAnalysis(analyzeRecitation(vs, t, range));
+          setAnalysis(analyzeRecitationWithOverrun(vs, followingRef.current, t, range, MAX_RECITE_AYAHS));
           setAnalyzedOnDevice(true);
           setStage("feedback");
         } else {

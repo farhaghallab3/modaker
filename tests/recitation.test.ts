@@ -61,3 +61,64 @@ test("detects hesitation from word timings", () => {
   const h = r.mistakes.find((m) => m.type === "hesitation");
   assert.ok(h && h.pauseSec! >= 3);
 });
+
+// ── Reciting past the selected range ────────────────────────────────────
+// Regression: a learner picked ayahs 1–5 of a surah, recited on to the end with wrong words in the
+// following ayahs, and was shown "17 of 17 words, 100%": everything after the range was set aside as
+// "extra" and never compared. The same situation, with the suite's non-Quranic sentences.
+import { analyzeRecitationWithOverrun, trailingExtraWords } from "../src/lib/recitation/compare";
+
+const firstTwo = { surah: 999, from: 1, to: 2 };
+const pastRangeWrong = "ذهب الطالب الى المدرسة صباحا وقرأ الكتاب في المكتبة الكبيرة ثم رجع الى بيتنا مستورا";
+
+test("recitation past the range: plain analysis sets the extra words aside (the reported 100%)", () => {
+  const r = analyzeRecitation(AYAHS.slice(0, 2), tr(pastRangeWrong), firstTwo);
+  assert.equal(r.accuracy, 1);
+  assert.equal(r.extraWords.length, 5);
+  assert.equal(trailingExtraWords(AYAHS.slice(0, 2), tr(pastRangeWrong)), 5);
+});
+
+test("recitation past the range: the following ayahs are checked and wrong words are flagged", () => {
+  const r = analyzeRecitationWithOverrun(AYAHS.slice(0, 2), AYAHS.slice(2), tr(pastRangeWrong), firstTwo);
+  assert.deepEqual(r.extendedFrom, firstTwo);
+  assert.deepEqual(r.range, { surah: 999, from: 1, to: 3 });
+  assert.equal(r.extraWords.length, 0);
+  assert.ok(r.accuracy < 1, `accuracy ${r.accuracy}`);
+  assert.equal(r.matchedWords, 13);
+  assert.equal(r.expectedWords, 15);
+  const flagged = r.ayahs[2].words.filter((w) => w.state !== "ok").map((w) => w.heard);
+  assert.deepEqual(flagged, ["بيتنا", "مستورا"]);
+  assert.notEqual(r.ayahs[2].status, "mastered");
+});
+
+test("recitation past the range: corroborated wrong words count as mistakes", () => {
+  const t = tr(pastRangeWrong, undefined, { evidence: { kind: "none", secondOpinion: { provider: "g", text: pastRangeWrong } } });
+  const r = analyzeRecitationWithOverrun(AYAHS.slice(0, 2), AYAHS.slice(2), t, firstTwo);
+  assert.deepEqual(r.mistakes.filter((m) => m.type === "incorrect").map((m) => `${m.ayahKey}:${m.heard}`), ["999:3:بيتنا", "999:3:مستورا"]);
+  assert.equal(r.ayahs[2].status, "needs-review");
+});
+
+test("recitation past the range: a correct continuation still scores 100%", () => {
+  const text = "ذهب الطالب الى المدرسة صباحا وقرأ الكتاب في المكتبة الكبيرة ثم رجع إلى بيته مسرورا";
+  const r = analyzeRecitationWithOverrun(AYAHS.slice(0, 2), AYAHS.slice(2), tr(text), firstTwo);
+  assert.equal(r.range.to, 3);
+  assert.equal(r.accuracy, 1);
+  assert.ok(r.ayahs.every((a) => a.status === "mastered"));
+});
+
+test("recitation past the range: unrelated trailing speech does not extend the range", () => {
+  const text = "ذهب الطالب الى المدرسة صباحا وقرأ الكتاب في المكتبة الكبيرة السلام عليكم ورحمة الله";
+  const r = analyzeRecitationWithOverrun(AYAHS.slice(0, 2), AYAHS.slice(2), tr(text), firstTwo);
+  assert.equal(r.extendedFrom, undefined);
+  assert.deepEqual(r.range, firstTwo);
+  assert.equal(r.extraWords.length, 4);
+});
+
+test("recitation past the range: no extension beyond the per-session maximum or without overrun", () => {
+  const capped = analyzeRecitationWithOverrun(AYAHS.slice(0, 2), AYAHS.slice(2), tr(pastRangeWrong), firstTwo, 2);
+  assert.equal(capped.extendedFrom, undefined);
+  const exact = "ذهب الطالب الى المدرسة صباحا وقرأ الكتاب في المكتبة الكبيرة";
+  const plain = analyzeRecitationWithOverrun(AYAHS.slice(0, 2), AYAHS.slice(2), tr(exact), firstTwo);
+  assert.equal(plain.extendedFrom, undefined);
+  assert.equal(plain.accuracy, 1);
+});
