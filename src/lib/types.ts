@@ -271,6 +271,10 @@ export interface RecitationAnalysis {
    * Holds the range originally selected; `range` is the extended one.
    */
   extendedFrom?: AyahRange;
+  /** What the teacher says about this result (fixed sentences, ayah numbers only — never Quran words). */
+  feedbackText?: string;
+  /** Signed payload to speak `feedbackText` with the AI voice; absent when speech is off. */
+  speech?: { text: string; exp: number; sig: string };
 }
 
 // ── Review ───────────────────────────────────────────────────────────────
