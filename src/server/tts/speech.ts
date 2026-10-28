@@ -5,7 +5,7 @@
  *    Quran verses, hadith evidence, source quotations, templates and Level C (sensitive) answers are never spoken.
  *  - The endpoint is not a generic TTS proxy: the server signs the exact text it is willing to speak (HMAC, short expiry);
  *    the browser can only ask to speak text that came from a real assistant answer.
- *  - Server-side OpenAI call only; audio is streamed back ephemerally and never stored.
+ *  - Server-side call only (Gemini TTS, free tier, or OpenAI TTS; see ttsEngine); audio is streamed back ephemerally and never stored.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { normalizeArabic } from "@/lib/quran/normalize";
@@ -85,7 +85,7 @@ export function verifySpeech(p: SpeechPayload, key: string, now = Date.now()): b
 
 /** The payload to attach to an answer, or null when speech is off/unconfigured or nothing is speakable. */
 export function speechFor(answer: AssistantAnswer, now = Date.now()): SpeechPayload | null {
-  if (!env.assistantTts() || !env.openaiApiKey()) return null;
+  if (!env.assistantTts() || !ttsEngine()) return null;
   const key = env.sessionSecret();
   if (!key) return null;
   const text = speakableText(answer);
@@ -135,4 +135,106 @@ export async function synthesize(text: string, o: SynthOptions = {}): Promise<Ar
   const audio = await res.arrayBuffer();
   if (audio.byteLength < 100) throw new Error("speech provider returned no audio");
   return audio;
+}
+
+// ── engine choice ────────────────────────────────────────────────────────
+
+export type TtsEngine = "gemini" | "openai";
+
+/** The voice engine that will speak, or null when none has a key. "auto" prefers Gemini (free tier) when its key is set. */
+export function ttsEngine(): TtsEngine | null {
+  const want = env.ttsProvider();
+  const gemini = Boolean(env.geminiApiKey());
+  const openai = Boolean(env.openaiApiKey());
+  if (want === "gemini") return gemini ? "gemini" : null;
+  if (want === "openai") return openai ? "openai" : null;
+  return gemini ? "gemini" : openai ? "openai" : null;
+}
+
+export interface SpeechAudio {
+  audio: ArrayBuffer;
+  contentType: string;
+}
+
+/** Speaks with the configured engine. Throws on any failure (the route turns it into a generic 502). */
+export async function synthesizeSpeech(text: string, o: SynthOptions = {}): Promise<SpeechAudio> {
+  const engine = ttsEngine();
+  if (engine === "gemini") return { audio: await synthesizeGemini(text, o), contentType: "audio/wav" };
+  if (engine === "openai") return { audio: await synthesize(text, o), contentType: "audio/mpeg" };
+  throw new Error("no speech engine configured");
+}
+
+// ── Gemini text-to-speech (free tier) ────────────────────────────────────
+
+/** Delivery style. Gemini reads `text` word for word, so how to speak goes in this separate field. */
+export const GEMINI_STYLE =
+  "calm, warm and patient, like a kind teacher explaining to a student; medium pace; clear Modern Standard Arabic; no theatrical acting";
+
+interface GeminiContent {
+  type?: string;
+  data?: string;
+  mime_type?: string;
+  mimeType?: string;
+}
+interface GeminiReply {
+  steps?: { type?: string; content?: GeminiContent[] }[];
+  candidates?: { content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] } }[];
+}
+
+/** The base64 audio in a Gemini reply (Interactions API, or the older generateContent shape), or null. */
+export function geminiAudioData(reply: GeminiReply): string | null {
+  const fromSteps = (reply.steps ?? [])
+    .filter((s) => s.type === undefined || s.type === "model_output")
+    .flatMap((s) => s.content ?? [])
+    .filter((c) => c.type === "audio" && typeof c.data === "string")
+    .map((c) => c.data as string);
+  if (fromSteps.length) return fromSteps[fromSteps.length - 1];
+  const parts = reply.candidates?.[0]?.content?.parts ?? [];
+  const inline = parts.map((p) => p.inlineData?.data).filter((d): d is string => typeof d === "string");
+  return inline.length ? inline[inline.length - 1] : null;
+}
+
+/** Wraps raw 16-bit mono PCM in a WAV header so every browser can play it. Bytes that already are WAV pass through. */
+export function toWav(bytes: Uint8Array, sampleRate = 24_000): Uint8Array {
+  if (bytes.length >= 12 && String.fromCharCode(...bytes.subarray(0, 4)) === "RIFF" && String.fromCharCode(...bytes.subarray(8, 12)) === "WAVE") return bytes;
+  const out = new Uint8Array(44 + bytes.length);
+  const v = new DataView(out.buffer);
+  const ascii = (at: number, t: string) => [...t].forEach((ch, i) => v.setUint8(at + i, ch.charCodeAt(0)));
+  ascii(0, "RIFF");
+  v.setUint32(4, 36 + bytes.length, true);
+  ascii(8, "WAVE");
+  ascii(12, "fmt ");
+  v.setUint32(16, 16, true); // fmt chunk size
+  v.setUint16(20, 1, true); // PCM
+  v.setUint16(22, 1, true); // mono
+  v.setUint32(24, sampleRate, true);
+  v.setUint32(28, sampleRate * 2, true); // byte rate
+  v.setUint16(32, 2, true); // block align
+  v.setUint16(34, 16, true); // bits per sample
+  ascii(36, "data");
+  v.setUint32(40, bytes.length, true);
+  out.set(bytes, 44);
+  return out;
+}
+
+/** Returns WAV bytes. Throws on any failure. Never logs text or keys. */
+export async function synthesizeGemini(text: string, o: SynthOptions = {}): Promise<ArrayBuffer> {
+  const body = {
+    model: o.model ?? env.geminiTtsModel(),
+    input: [{ type: "user_input", content: [{ type: "text", text, annotations: [{ type: "speech_metadata", style: GEMINI_STYLE }] }] }],
+    response_format: { type: "audio" },
+    generation_config: { speech_config: [{ voice: o.voice ?? env.geminiTtsVoice() }] },
+  };
+  const res = await (o.fetchImpl ?? fetch)(`${o.baseUrl ?? env.geminiBaseUrl()}/interactions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-goog-api-key": o.apiKey ?? env.geminiApiKey() },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(o.timeoutMs ?? 25_000),
+  });
+  if (!res.ok) throw new Error(`speech provider HTTP ${res.status}`);
+  const data = geminiAudioData((await res.json().catch(() => ({}))) as GeminiReply);
+  if (!data) throw new Error("speech provider returned no audio");
+  const wav = toWav(new Uint8Array(Buffer.from(data, "base64")));
+  if (wav.byteLength < 100 + 44) throw new Error("speech provider returned no audio");
+  return wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength) as ArrayBuffer;
 }

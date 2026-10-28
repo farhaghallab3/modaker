@@ -279,3 +279,25 @@ test("the trace exposes every stage and keeps the raw transcript untouched", () 
   assert.equal(t.alignment[0].op, "SUBSTITUTION");
   assert.equal(t.analysis.ayahs[0].status, "uncertain");
 });
+
+test("Groq (free tier) uses the same OpenAI-compatible request: Groq URL, its own key, verbose Whisper output, provider id", async () => {
+  const sent: { url: string; auth: string; form: FormData }[] = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
+    sent.push({ url: String(url), auth: (init.headers as Record<string, string>).authorization, form: init.body as FormData });
+    return new Response(JSON.stringify({ text: "اهدنا", words: [{ word: "اهدنا", start: 0, end: 0.5 }], segments: [] }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const p = new OpenAiSttProvider("gsk-test", "whisper-large-v3", "https://api.groq.test/openai/v1", "groq");
+    const t = await p.transcribe({ audio: new ArrayBuffer(64), mimeType: "audio/webm", language: "ar" });
+    assert.equal(sent[0].url, "https://api.groq.test/openai/v1/audio/transcriptions");
+    assert.equal(sent[0].auth, "Bearer gsk-test");
+    assert.equal(sent[0].form.get("response_format"), "verbose_json");
+    assert.equal(sent[0].form.get("model"), "whisper-large-v3");
+    assert.equal(t.provider, "groq:whisper-large-v3");
+    assert.equal(t.words?.[0].text, "اهدنا");
+    await assert.rejects(() => new OpenAiSttProvider("", "whisper-large-v3", "https://x.test", "groq").transcribe({ audio: new ArrayBuffer(8), mimeType: "audio/webm", language: "ar" }), /GROQ_API_KEY/);
+  } finally {
+    globalThis.fetch = real;
+  }
+});

@@ -61,7 +61,7 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ question, context }),
     }).then((r) => json<AssistantAnswer>(r)),
-  /** Spoken answer (MP3). Only text the server signed on a real assistant answer is accepted. */
+  /** Spoken answer (MP3 or WAV, depending on the server's voice engine). Only text the server signed on a real assistant answer is accepted. */
   speech: async (speech: { text: string; exp: number; sig: string }): Promise<Blob> => {
     const res = await fetch(`${BASE}/assistant/speech`, {
       method: "POST",
