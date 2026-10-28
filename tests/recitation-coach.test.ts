@@ -4,17 +4,19 @@
  */
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { ayahsToRepeat, ayahsUnsure, recitationFeedbackText } from "../src/lib/recitation/coach-feedback";
+import { ayahNumbers, ayahsNotRecited, ayahsToRepeat, ayahsUnsure, recitationFeedbackText, TEACHER_PHRASES, teacherFeedback } from "../src/lib/recitation/coach-feedback";
 import { speechForText, verifySpeech } from "../src/server/tts/speech";
 import type { AyahRecitationResult } from "../src/lib/types";
 
 const WORDS = ["كلمةاولى", "كلمةثانية", "كلمةثالثة"];
-const ayah = (n: number, status: AyahRecitationResult["status"]): AyahRecitationResult => ({
+const ayah = (n: number, status: AyahRecitationResult["status"], heardSome = true): AyahRecitationResult => ({
   key: `1:${n}`,
   ayah: n,
   accuracy: status === "mastered" ? 1 : 0.5,
   status,
-  words: WORDS.map((text) => ({ text, state: status === "mastered" ? "ok" : "incorrect" })),
+  words: WORDS.map((text, i) =>
+    status === "mastered" ? { text, state: "ok" } : status === "uncertain" ? (heardSome && i === 0 ? { text, state: "ok" } : { text, state: "uncertain" }) : { text, state: "incorrect" },
+  ),
   mistakes: [],
 });
 const noQuranWords = (t: string) => WORDS.every((w) => !t.includes(w));
@@ -39,7 +41,7 @@ test("mistakes → names the ayah numbers, asks to listen to the reciter and ret
   const a = { recognition: "good" as const, ayahs: [ayah(1, "mastered"), ayah(2, "needs-review"), ayah(3, "missed"), ayah(4, "mastered")] };
   assert.deepEqual(ayahsToRepeat(a), [2, 3]);
   const t = recitationFeedbackText(a);
-  assert.match(t, /الآيات ٢ و٣/);
+  assert.match(t, /الآيتين ٢ و٣/);
   assert.match(t, /استمع إلى الشيخ/);
   assert.match(t, /أعد المحاولة/);
   assert.ok(noQuranWords(t));
@@ -73,4 +75,30 @@ test("speechForText signs the feedback only when a voice engine and secret exist
   assert.ok(verifySpeech(p!, process.env.SESSION_SECRET!));
   process.env.ASSISTANT_TTS = "off";
   assert.equal(speechForText(text), null);
+});
+
+test("stopped early: unheard trailing ayahs → 'complete the recitation', not 'unsure'", () => {
+  const a = { recognition: "good" as const, ayahs: [ayah(1, "mastered"), ayah(2, "mastered"), ayah(3, "mastered"), ayah(4, "uncertain", false), ayah(5, "uncertain", false)] };
+  assert.deepEqual(ayahsNotRecited(a), [4, 5]);
+  assert.deepEqual(ayahsUnsure(a), []);
+  const f = teacherFeedback(a);
+  assert.equal(f.key, "incomplete");
+  assert.match(f.text, /لم أسمع الآيتين ٤ و٥/);
+  assert.match(f.text, /أكمل التسميع/);
+});
+
+test("spoken sentences are a small fixed set (prepared ahead), with no numbers and no Quran words", () => {
+  for (const t of Object.values(TEACHER_PHRASES)) {
+    assert.ok(!/[0-9٠-٩]/.test(t));
+    assert.ok(noQuranWords(t));
+  }
+  const keys = new Set([
+    teacherFeedback({ recognition: "poor", ayahs: [] }).key,
+    teacherFeedback({ recognition: "good", ayahs: [ayah(1, "mastered")] }).key,
+    teacherFeedback({ recognition: "good", ayahs: [ayah(1, "missed")] }).key,
+    teacherFeedback({ recognition: "good", ayahs: [ayah(1, "uncertain")] }).key,
+  ]);
+  for (const k of keys) assert.ok(k in TEACHER_PHRASES);
+  assert.equal(ayahNumbers([7]), "الآية ٧");
+  assert.equal(ayahNumbers([1, 2, 3]), "الآيات ١ و٢ و٣");
 });

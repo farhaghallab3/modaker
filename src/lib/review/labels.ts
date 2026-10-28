@@ -28,6 +28,11 @@ export function ayahCountLabel(n: number): string {
   return `${d(n)} آية`;
 }
 
+/** Same count after a preposition ("لم نتأكد من آيتين"). */
+export function ayahCountLabelGen(n: number): string {
+  return n === 2 ? "آيتين" : ayahCountLabel(n);
+}
+
 /** REVIEW STATE wording: "آية تحتاج مراجعة" / "آيتان تحتاجان مراجعة" / "٣ آيات تحتاج مراجعة". */
 export function needsReviewLabel(n: number): string {
   if (n === 1) return "آية تحتاج مراجعة";

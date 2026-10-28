@@ -10,7 +10,7 @@ import { optionalSession } from "@/server/auth";
 import { env } from "@/server/env";
 import { apiError } from "@/server/errors";
 import { assertSameOrigin, enforceRateLimit, readJson, route } from "@/server/http";
-import { SPEECH_MAX_CHARS, synthesizeSpeech, takeSpeechBudget, ttsEngine, verifySpeech, type SpeechAudio } from "@/server/tts/speech";
+import { SPEECH_MAX_CHARS, cachedSpeech, synthesizeSpeech, takeSpeechBudget, ttsEngine, verifySpeech, type SpeechAudio } from "@/server/tts/speech";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -29,11 +29,10 @@ export const POST = route(async (req) => {
 
   if (!env.assistantTts() || !ttsEngine()) throw apiError(503, "speech_unavailable");
   if (!verifySpeech(body, env.sessionSecret())) throw apiError(403, "forbidden");
-  if (!takeSpeechBudget(env.ttsDailyCap())) throw apiError(429, "rate_limited");
-
-  let out: SpeechAudio;
+  let out: SpeechAudio | null = cachedSpeech(body.text);
+  if (!out && !takeSpeechBudget(env.ttsDailyCap())) throw apiError(429, "rate_limited");
   try {
-    out = await synthesizeSpeech(body.text);
+    out ??= await synthesizeSpeech(body.text);
   } catch (e) {
     console.warn("[speech] synthesis failed:", (e as Error).message); // never the text, never the key
     throw apiError(502, "speech_unavailable");

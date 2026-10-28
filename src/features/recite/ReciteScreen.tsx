@@ -17,7 +17,7 @@ import { Badge, Button, ButtonLink, cn, EmptyState, ErrorState, Toggle } from "@
 import { FocusActionBar, FocusHeader } from "@/features/focus/FocusHeader";
 import { SOURCE_UNAVAILABLE } from "@/features/quran/states";
 import { api, useOnline, useSurah } from "@/lib/api";
-import { stopSpeech } from "@/lib/assistant/speech-player";
+import { prepareTeacherVoice, stopTeacher } from "@/lib/recitation/teacher-voice";
 import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import { analyzeRecitationWithOverrun } from "@/lib/recitation/compare";
 import { MAX_RECITE_AYAHS, clampRange, firstWord, memorizedRanges } from "@/lib/recitation/ranges";
@@ -208,12 +208,17 @@ function ReciteSession({
 
   const rec = useRecitationRecorder({ range, onTranscript: analyze });
 
+  // Prepare the teacher's voice while the learner recites, so it speaks the moment the result is ready.
+  useEffect(() => {
+    if (online) void prepareTeacherVoice();
+  }, [online]);
+
   useEffect(() => {
     if (stage === "feedback") resultRef.current?.focus();
   }, [stage]);
 
   function retry() {
-    stopSpeech();
+    stopTeacher();
     audio.stop();
     setListen(false);
     setAnalysis(null);
@@ -399,7 +404,7 @@ function ReciteSession({
         ) : analysis ? (
           <div ref={resultRef} tabIndex={-1} className="py-6 sm:py-8 focus:outline-none" aria-label="نتيجة التسميع">
             <TeacherVoice
-              key={analysis.transcript.text + analysis.accuracy}
+              key={`${analysis.transcript.text}|${analysis.accuracy}`}
               analysis={analysis}
               canListen={(n) => verses.some((v) => v.ayah === n)}
               onListenAyah={(n) => {

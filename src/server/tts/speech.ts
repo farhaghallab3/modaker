@@ -166,8 +166,34 @@ export interface SpeechAudio {
 }
 
 /** Speaks with the configured engine. Throws on any failure (the route turns it into a generic 502). */
+/** Recently spoken texts (e.g. the teacher's fixed sentences) are reused instead of asking the voice service again. */
+const audioCache = new Map<string, SpeechAudio>();
+const AUDIO_CACHE_MAX = 24;
+export function clearSpeechCacheForTests() {
+  audioCache.clear();
+}
+
+const audioCacheKey = (text: string) => `${ttsEngine()}:${env.geminiTtsVoice()}:${env.ttsVoice()}:${text}`;
+
+/** Audio already made for this exact text on this server instance (costs nothing, so it is not counted against the daily cap). */
+export function cachedSpeech(text: string): SpeechAudio | null {
+  return audioCache.get(audioCacheKey(text)) ?? null;
+}
+
 export async function synthesizeSpeech(text: string, o: SynthOptions = {}): Promise<SpeechAudio> {
   const engine = ttsEngine();
+  const cacheKey = audioCacheKey(text);
+  const hit = audioCache.get(cacheKey);
+  if (hit && !o.fetchImpl) return hit;
+  const out = await synthesizeUncached(engine, text, o);
+  if (!o.fetchImpl) {
+    if (audioCache.size >= AUDIO_CACHE_MAX) audioCache.delete(audioCache.keys().next().value as string);
+    audioCache.set(cacheKey, out);
+  }
+  return out;
+}
+
+async function synthesizeUncached(engine: TtsEngine | null, text: string, o: SynthOptions): Promise<SpeechAudio> {
   if (engine === "gemini") return { audio: await synthesizeGemini(text, o), contentType: "audio/wav" };
   if (engine === "openai") return { audio: await synthesize(text, o), contentType: "audio/mpeg" };
   throw new Error("no speech engine configured");

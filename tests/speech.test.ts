@@ -11,6 +11,7 @@ import { TafsirRetriever } from "../src/server/rag/retriever";
 import { HadeethEncProvider } from "../src/server/hadith/hadeethenc";
 import { rateLimiter } from "../src/server/rate-limit";
 import {
+  clearSpeechCacheForTests,
   resetSpeechBudgetForTests,
   signSpeech,
   speakableText,
@@ -42,6 +43,7 @@ beforeEach(() => {
   delete process.env.GEMINI_TTS_MODEL;
   delete process.env.GEMINI_TTS_VOICE;
   resetSpeechBudgetForTests();
+  clearSpeechCacheForTests();
   rateLimiter.reset();
 });
 afterEach(() => {
@@ -221,7 +223,7 @@ test("daily cap: over the cap → 429 and OpenAI is not called", async () => {
   const calls = fakeOpenAi();
   process.env.ASSISTANT_TTS_DAILY_CAP = "2";
   const statuses: number[] = [];
-  for (let i = 0; i < 4; i++) statuses.push((await POST(req(payload(), { "x-forwarded-for": `10.1.0.${i}` }), undefined)).status);
+  for (let i = 0; i < 4; i++) statuses.push((await POST(req(payload(`هذا نص صالح للقراءة رقم ${i} في الاختبار.`), { "x-forwarded-for": `10.1.0.${i}` }), undefined)).status);
   assert.deepEqual(statuses, [200, 200, 429, 429]);
   assert.equal(calls.length, 2);
 });
@@ -358,4 +360,29 @@ test("env values pasted with quotes, spaces or a newline still work; GET /status
       else process.env[k] = v;
     }
   }
+});
+
+test("the same text is synthesized once per server instance, then served from memory", async () => {
+  const calls = fakeOpenAi();
+  const p = payload();
+  assert.equal((await POST(req(p), undefined)).status, 200);
+  assert.equal((await POST(req(p), undefined)).status, 200);
+  assert.equal(calls.length, 1);
+  // a cached text costs nothing, so it still plays after the daily cap is reached
+  process.env.ASSISTANT_TTS_DAILY_CAP = "1";
+  assert.equal((await POST(req(p), undefined)).status, 200);
+});
+
+test("GET /recitation/teacher-voice signs every fixed teacher sentence, or returns null when speech is off", async () => {
+  const { GET } = await import("../src/app/api/v1/recitation/teacher-voice/route");
+  const { TEACHER_PHRASES } = await import("../src/lib/recitation/coach-feedback");
+  const j = await (await GET(new Request("https://modaker.test/api/v1/recitation/teacher-voice"), undefined)).json();
+  assert.deepEqual(Object.keys(j.phrases).sort(), Object.keys(TEACHER_PHRASES).sort());
+  for (const [k, v] of Object.entries(j.phrases) as [keyof typeof TEACHER_PHRASES, { text: string; exp: number; sig: string }][]) {
+    assert.equal(v.text, TEACHER_PHRASES[k]);
+    assert.ok(verifySpeech(v, SECRET));
+  }
+  process.env.ASSISTANT_TTS = "off";
+  const off = await (await GET(new Request("https://modaker.test/api/v1/recitation/teacher-voice"), undefined)).json();
+  assert.equal(off.phrases, null);
 });
