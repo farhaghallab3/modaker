@@ -224,6 +224,11 @@ const ERRORS: Record<SpeechErrorCode, { icon: IconName; title: string; body: Rea
     title: "لا يوجد اتصال بالإنترنت",
     body: "يحتاج تحويل التلاوة إلى نص إلى اتصال. تحقّق من الشبكة ثم أعد المحاولة؛ تقدّمك محفوظ.",
   },
+  "browser-stt-unavailable": {
+    icon: "info",
+    title: "خدمة التعرّف على الصوت في متصفحك غير متاحة",
+    body: "اتصالك يعمل، لكن متصفحك لا يستطيع تحويل الكلام إلى نص. استخدم Google Chrome أو Microsoft Edge أو Safari، وأوقف الـ VPN إن كان يعمل — أو أرسل التسجيل إلى الخادم.",
+  },
   "stt-unavailable": {
     icon: "alert",
     title: "خدمة التعرّف على التلاوة غير متاحة الآن",
@@ -303,7 +308,7 @@ function RecorderError({
             أعد المحاولة
           </Button>
         ) : null}
-        {(code === "stt-unavailable" || code === "unsupported-format" || code === "network" || code === "engine-no-result") && rec.canSwitch ? (
+        {(code === "stt-unavailable" || code === "unsupported-format" || code === "network" || code === "browser-stt-unavailable" || code === "engine-no-result") && rec.canSwitch ? (
           <Button variant="ghost" onClick={rec.switchRecognizer}>
             {altLabel}
           </Button>

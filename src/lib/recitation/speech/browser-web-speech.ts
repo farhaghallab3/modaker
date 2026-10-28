@@ -174,7 +174,10 @@ export const webSpeechRecognizer: SpeechRecognizer = {
           case "audio-capture":
             return fail(new SpeechError("no-microphone"));
           case "network":
-            return fail(new SpeechError("network"));
+            // Web Speech sends audio to the browser vendor's service. When the device IS online, a "network"
+            // error means that service is unreachable or absent (some Chromium browsers ship the API without it),
+            // not that the learner has no internet.
+            return fail(new SpeechError(typeof navigator !== "undefined" && navigator.onLine === false ? "network" : "browser-stt-unavailable"));
           case "language-not-supported":
             return fail(new SpeechError("unsupported"));
           // "no-speech" and "aborted" are routine; onend decides whether to restart.

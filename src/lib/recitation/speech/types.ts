@@ -16,6 +16,8 @@ export type SpeechErrorCode =
   | "mic-busy" // NotReadableError — another app holds the device
   | "unsupported" // no MediaRecorder / Web Speech / getUserMedia, or insecure context
   | "network" // offline or request failed
+  | "browser-stt-unavailable" // online, but the browser's own speech service failed (Web Speech "network" error:
+  //                               e.g. Brave/Opera/Vivaldi/Electron, or a VPN/network blocking the vendor's service)
   | "stt-unavailable" // server STT provider down / not configured (stt_unavailable)
   | "rate-limited" // rate_limited
   | "too-long" // payload_too_large
