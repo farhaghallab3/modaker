@@ -257,6 +257,12 @@ export interface RecitationAnalysis {
   transcript: Transcript;
   /** Always true: text matching only, never acoustic tajweed assessment. */
   textOnly: true;
+  /**
+   * Set when the learner kept reciting past the selected range and the analysis was extended to the
+   * following ayahs they recited (so those words are checked instead of being set aside as "extra").
+   * Holds the range originally selected; `range` is the extended one.
+   */
+  extendedFrom?: AyahRange;
 }
 
 // ── Review ───────────────────────────────────────────────────────────────

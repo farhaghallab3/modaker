@@ -411,3 +411,54 @@ export function analyzeRecitation(
     textOnly: true,
   };
 }
+
+// ── Reciting past the selected range ────────────────────────────────────
+// A learner who picks ayahs 1–5 often keeps going to the end of the surah. Those words have no place in the
+// selected range, so on their own they are set aside as "extra" and never compared: a wrong word there would
+// be silently ignored while the headline says 100%. When the recitation runs on past the range, the analysis
+// is extended to the ayahs that follow, so what was recited is checked like the rest.
+
+/** At least this many recognized words after the end of the range before we look at the following ayahs. */
+export const OVERRUN_MIN_WORDS = 2;
+
+/** How many recognized words come after the last word of the expected range (left unmatched at the end). */
+export function trailingExtraWords(ayahs: Ayah[], transcript: Transcript): number {
+  const ops = align(buildExpected(ayahs), buildRecognized(transcript));
+  let n = 0;
+  for (let k = ops.length - 1; k >= 0 && ops[k].t === "ins"; k--) n++;
+  return n;
+}
+
+/**
+ * Analyze the recitation, extending it to `following` (the ayahs right after the range, in order) when the
+ * learner recited past the end of the range. Only as many following ayahs as the extra speech can cover are
+ * added (never beyond `maxAyahs` in total), and the extension is kept only if that speech really was those
+ * ayahs: at least MIN_MATCHED_SHARE of their words matched. Otherwise the plain analysis is returned.
+ */
+export function analyzeRecitationWithOverrun(
+  ayahs: Ayah[],
+  following: Ayah[],
+  transcript: Transcript,
+  range: AyahRange,
+  maxAyahs = Infinity,
+): RecitationAnalysis {
+  const base = analyzeRecitation(ayahs, transcript, range);
+  if (base.recognition !== "good" || !following.length) return base;
+  const trailing = trailingExtraWords(ayahs, transcript);
+  if (trailing < OVERRUN_MIN_WORDS) return base;
+
+  const extra: Ayah[] = [];
+  let extraWords = 0;
+  for (const a of following) {
+    if (extraWords >= trailing || ayahs.length + extra.length >= maxAyahs) break;
+    if (a.surah !== range.surah || a.ayah !== range.to + extra.length + 1) break; // contiguous only
+    extra.push(a);
+    extraWords += buildExpected([a]).length;
+  }
+  if (!extra.length) return base;
+
+  const extRange: AyahRange = { surah: range.surah, from: range.from, to: extra[extra.length - 1].ayah };
+  const ext = analyzeRecitation([...ayahs, ...extra], transcript, extRange);
+  if (ext.recognition !== "good" || ext.matchedWords - base.matchedWords < Math.ceil(extraWords * MIN_MATCHED_SHARE)) return base;
+  return { ...ext, extendedFrom: range };
+}

@@ -122,6 +122,18 @@ export function RecitationFeedback({
           </div>
         </div>
         <div className="relative mt-5 border-t border-sand/25 pt-4 space-y-1.5">
+          {analysis.extendedFrom ? (
+            <p className="flex items-start gap-2 text-xs leading-6 text-ink/75">
+              <Icon name="info" size={15} className="mt-1 text-sand-700" />
+              واصلتَ التلاوة بعد الآية {toArabicDigits(analysis.extendedFrom.to)}، فقارنّا ما قرأته حتى الآية {toArabicDigits(analysis.range.to)} أيضًا.
+            </p>
+          ) : null}
+          {analysis.extraWords.length ? (
+            <p className="flex items-start gap-2 text-xs leading-6 text-ink/75">
+              <Icon name="info" size={15} className="mt-1 text-sand-700" />
+              سمعنا {toArabicDigits(analysis.extraWords.length)} كلمة لم نجد لها موضعًا في الآيات المختارة، فلم تدخل في هذه النتيجة (تجدها أسفل الصفحة).
+            </p>
+          ) : null}
           <BetaNote />
           <TextOnlyNote />
           {practiceOnly ? (

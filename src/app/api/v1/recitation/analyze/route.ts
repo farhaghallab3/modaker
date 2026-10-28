@@ -4,7 +4,8 @@
  * The server loads the expected ayahs from the verified Quran provider —
  * client-supplied verse text is never accepted. Text matching only (no tajweed).
  */
-import { analyzeRecitation } from "@/lib/recitation/compare";
+import { OVERRUN_MIN_WORDS, analyzeRecitationWithOverrun, trailingExtraWords } from "@/lib/recitation/compare";
+import { getSurahMeta } from "@/lib/quran/surahs";
 import { optionalSession } from "@/server/auth";
 import { env } from "@/server/env";
 import { apiError } from "@/server/errors";
@@ -24,12 +25,21 @@ export const POST = route(async (req) => {
   const { range, transcript } = await readJson(req, bodySchema, 1024 * 1024);
   if (range.to - range.from + 1 > MAX_RECITATION_AYAHS) throw apiError(400, "range_too_large");
 
-  const ayahs = await getQuranProvider().getAyahs(range);
-  const analysis = analyzeRecitation(ayahs, transcript, range);
+  const provider = getQuranProvider();
+  const ayahs = await provider.getAyahs(range);
+  // Recited past the end of the range? Load the following ayahs so those words are checked, not set aside.
+  const ayahCount = getSurahMeta(range.surah)?.ayahCount ?? range.to;
+  const lastAllowed = Math.min(ayahCount, range.from + MAX_RECITATION_AYAHS - 1);
+  const following =
+    range.to < lastAllowed && trailingExtraWords(ayahs, transcript) >= OVERRUN_MIN_WORDS
+      ? await provider.getAyahs({ surah: range.surah, from: range.to + 1, to: lastAllowed })
+      : [];
+  const analysis = analyzeRecitationWithOverrun(ayahs, following, transcript, range, MAX_RECITATION_AYAHS);
   if (env.sttTrace()) {
     // Developer diagnostics only (STT_TRACE=on): the pipeline stages for this analysis.
     const { traceRecitation } = await import("@/lib/recitation/trace");
-    const t = traceRecitation(ayahs, transcript, range);
+    const used = [...ayahs, ...following.filter((a) => a.ayah <= analysis.range.to)];
+    const t = traceRecitation(used, transcript, analysis.range);
     console.info("[stt-trace] analyze", JSON.stringify({ normalized: t.normalized, alignment: t.alignment, mistakes: analysis.mistakes, perAyah: analysis.ayahs.map((a) => ({ k: a.key, acc: a.accuracy, status: a.status })) }));
   }
 
@@ -42,8 +52,8 @@ export const POST = route(async (req) => {
         data: {
           userId: session.userId,
           surah: range.surah,
-          fromAyah: range.from,
-          toAyah: range.to,
+          fromAyah: analysis.range.from,
+          toAyah: analysis.range.to,
           provider: transcript.provider.slice(0, 64),
           durationSec: transcript.durationSec ?? null,
           accuracy: analysis.accuracy,
