@@ -37,6 +37,9 @@ export const env = {
 
   sttProvider: () => str("STT_PROVIDER", "openai").toLowerCase() as "openai" | "groq" | "mock",
   /** Groq's hosted Whisper (OpenAI-compatible API, free tier). Used when STT_PROVIDER=groq. */
+  /** Free tajweed checker (services/tajweed, e.g. a Hugging Face Space). Both must be set to turn it on. */
+  tajweedUrl: () => str("TAJWEED_URL").replace(/\/+$/, ""),
+  tajweedKey: () => str("TAJWEED_KEY"),
   groqApiKey: () => str("GROQ_API_KEY"),
   groqBaseUrl: () => str("GROQ_BASE_URL", "https://api.groq.com/openai/v1").replace(/\/+$/, ""),
   groqSttModel: () => str("GROQ_STT_MODEL", "whisper-large-v3"),

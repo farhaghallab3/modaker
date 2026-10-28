@@ -54,6 +54,7 @@ export const rateLimiter: MemoryRateLimiter = (g.__muzakkirLimiter ??= new Memor
 /** Named budgets used by the route handlers. */
 export const LIMITS = {
   transcribe: { limit: 20, windowMs: 10 * 60_000 },
+  tajweed: { limit: 20, windowMs: 10 * 60_000 },
   analyze: { limit: 60, windowMs: 10 * 60_000 },
   assistant: { limit: 20, windowMs: 5 * 60_000 },
   coach: { limit: 30, windowMs: 10 * 60_000 },
