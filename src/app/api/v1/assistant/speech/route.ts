@@ -1,5 +1,5 @@
 /**
- * POST /api/v1/assistant/speech  { text, exp, sig }  →  audio/mpeg
+ * POST /api/v1/assistant/speech  { text, exp, sig }  →  audio/mpeg (OpenAI) or audio/wav (Gemini)
  * Speaks assistant answers aloud. NOT a generic TTS proxy: `text` must carry the signature the server attached to a real assistant
  * answer (see src/server/tts/speech.ts), so only text the assistant itself produced — and judged safe to read — can be spoken.
  * Same access model as /assistant/ask (optional session; rate limited per user or IP), plus a stricter budget and a daily cap.
@@ -10,7 +10,7 @@ import { optionalSession } from "@/server/auth";
 import { env } from "@/server/env";
 import { apiError } from "@/server/errors";
 import { assertSameOrigin, enforceRateLimit, readJson, route } from "@/server/http";
-import { SPEECH_MAX_CHARS, synthesize, takeSpeechBudget, verifySpeech } from "@/server/tts/speech";
+import { SPEECH_MAX_CHARS, synthesizeSpeech, takeSpeechBudget, ttsEngine, verifySpeech, type SpeechAudio } from "@/server/tts/speech";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -27,16 +27,16 @@ export const POST = route(async (req) => {
   enforceRateLimit(req, "speech", session?.userId);
   const body = await readJson(req, schema, 8 * 1024);
 
-  if (!env.assistantTts() || !env.openaiApiKey()) throw apiError(503, "speech_unavailable");
+  if (!env.assistantTts() || !ttsEngine()) throw apiError(503, "speech_unavailable");
   if (!verifySpeech(body, env.sessionSecret())) throw apiError(403, "forbidden");
   if (!takeSpeechBudget(env.ttsDailyCap())) throw apiError(429, "rate_limited");
 
-  let audio: ArrayBuffer;
+  let out: SpeechAudio;
   try {
-    audio = await synthesize(body.text);
+    out = await synthesizeSpeech(body.text);
   } catch (e) {
     console.warn("[speech] synthesis failed:", (e as Error).message); // never the text, never the key
     throw apiError(502, "speech_unavailable");
   }
-  return new Response(audio, { headers: { "content-type": "audio/mpeg", "cache-control": "no-store", "content-length": String(audio.byteLength) } });
+  return new Response(out.audio, { headers: { "content-type": out.contentType, "cache-control": "no-store", "content-length": String(out.audio.byteLength) } });
 });

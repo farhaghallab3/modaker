@@ -16,8 +16,11 @@ import {
   speakableText,
   speechFor,
   SPEECH_MAX_CHARS,
+  geminiAudioData,
   synthesize,
+  toWav,
   truncateForSpeech,
+  ttsEngine,
   verifySpeech,
 } from "../src/server/tts/speech";
 import { FakeQuran } from "./_fixtures";
@@ -27,13 +30,17 @@ const saved: Record<string, string | undefined> = {};
 const realFetch = globalThis.fetch;
 
 beforeEach(() => {
-  for (const k of ["OPENAI_API_KEY", "SESSION_SECRET", "ASSISTANT_TTS", "TTS_MODEL", "TTS_VOICE", "ASSISTANT_TTS_DAILY_CAP"]) saved[k] = process.env[k];
+  for (const k of ["OPENAI_API_KEY", "SESSION_SECRET", "ASSISTANT_TTS", "TTS_MODEL", "TTS_VOICE", "ASSISTANT_TTS_DAILY_CAP", "TTS_PROVIDER", "GEMINI_API_KEY", "GEMINI_TTS_MODEL", "GEMINI_TTS_VOICE"]) saved[k] = process.env[k];
   process.env.OPENAI_API_KEY = "sk-test-key";
   process.env.SESSION_SECRET = SECRET;
   delete process.env.ASSISTANT_TTS;
   delete process.env.TTS_MODEL;
   delete process.env.TTS_VOICE;
   delete process.env.ASSISTANT_TTS_DAILY_CAP;
+  delete process.env.TTS_PROVIDER;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_TTS_MODEL;
+  delete process.env.GEMINI_TTS_VOICE;
   resetSpeechBudgetForTests();
   rateLimiter.reset();
 });
@@ -245,4 +252,84 @@ test("synthesize: tts-1 models get no instructions; an empty/garbage reply is an
   assert.equal(calls[0].body.instructions, undefined);
   globalThis.fetch = (async () => new Response(new Uint8Array(10), { status: 200 })) as typeof fetch;
   await assert.rejects(() => synthesize("نص كافٍ للقراءة في الاختبار."), /no audio/);
+});
+
+// ── Gemini (free tier) ───────────────────────────────────────────────────
+
+const pcm = () => new Uint8Array(4000).fill(3);
+const fakeGemini = (status = 200, reply: unknown = { steps: [{ type: "model_output", content: [{ type: "audio", data: Buffer.from(pcm()).toString("base64") }] }] }) => {
+  const calls: { url: string; body: Record<string, unknown>; headers: Record<string, string> }[] = [];
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
+    calls.push({ url: String(url), body: JSON.parse(String(init.body)), headers: init.headers as Record<string, string> });
+    return new Response(JSON.stringify(status === 200 ? reply : {}), { status, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  return calls;
+};
+
+test("engine choice: auto prefers Gemini when its key is set; forcing an engine without its key turns speech off", () => {
+  assert.equal(ttsEngine(), "openai");
+  process.env.GEMINI_API_KEY = "gm-test-key";
+  assert.equal(ttsEngine(), "gemini");
+  process.env.TTS_PROVIDER = "openai";
+  assert.equal(ttsEngine(), "openai");
+  delete process.env.OPENAI_API_KEY;
+  assert.equal(ttsEngine(), null);
+  assert.equal(speechFor(answer()), null);
+  process.env.TTS_PROVIDER = "gemini";
+  assert.equal(ttsEngine(), "gemini");
+  assert.ok(speechFor(answer()), "Gemini alone is enough to offer speech");
+  delete process.env.GEMINI_API_KEY;
+  assert.equal(ttsEngine(), null);
+});
+
+test("a signed payload is spoken by Gemini: WAV back, key in a header, voice + teacher style sent, text sent verbatim", async () => {
+  delete process.env.OPENAI_API_KEY;
+  process.env.GEMINI_API_KEY = "gm-test-key";
+  const calls = fakeGemini();
+  const p = payload();
+  const res = await POST(req(p), undefined);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "audio/wav");
+  assert.equal(res.headers.get("cache-control"), "no-store");
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  assert.equal(bytes.byteLength, 4000 + 44);
+  assert.equal(String.fromCharCode(...bytes.subarray(0, 4)), "RIFF");
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /\/interactions$/);
+  assert.ok(!calls[0].url.includes("gm-test-key"), "the key never goes in the URL");
+  assert.equal(calls[0].headers["x-goog-api-key"], "gm-test-key");
+  const body = calls[0].body as any;
+  assert.equal(body.model, "gemini-3.8-flash-tts");
+  assert.deepEqual(body.generation_config.speech_config, [{ voice: "Sulafat" }]);
+  assert.equal(body.input[0].content[0].text, p.text);
+  assert.match(body.input[0].content[0].annotations[0].style, /teacher/);
+});
+
+test("Gemini failures are a generic 502 with no key in the reply; a reply without audio is an error", async () => {
+  delete process.env.OPENAI_API_KEY;
+  process.env.GEMINI_API_KEY = "gm-test-key";
+  fakeGemini(429);
+  const res = await POST(req(payload()), undefined);
+  assert.equal(res.status, 502);
+  assert.ok(!JSON.stringify(await res.json()).includes("gm-test-key"));
+  fakeGemini(200, { steps: [{ type: "model_output", content: [{ type: "text", text: "no audio" }] }] });
+  assert.equal((await POST(req(payload()), undefined)).status, 502);
+});
+
+test("geminiAudioData reads the last audio block (Interactions API) and the older generateContent shape", () => {
+  assert.equal(geminiAudioData({ steps: [{ type: "model_output", content: [{ type: "audio", data: "QQ==" }, { type: "audio", data: "Qg==" }] }] }), "Qg==");
+  assert.equal(geminiAudioData({ steps: [{ type: "user_input", content: [{ type: "audio", data: "QQ==" }] }] }), null);
+  assert.equal(geminiAudioData({ candidates: [{ content: { parts: [{ inlineData: { data: "Qw==" } }] } }] }), "Qw==");
+  assert.equal(geminiAudioData({}), null);
+});
+
+test("toWav adds a 24 kHz mono 16-bit header to raw PCM and leaves WAV untouched", () => {
+  const wav = toWav(new Uint8Array(10));
+  const v = new DataView(wav.buffer);
+  assert.equal(wav.length, 54);
+  assert.equal(v.getUint32(24, true), 24000);
+  assert.equal(v.getUint16(22, true), 1);
+  assert.equal(v.getUint16(34, true), 16);
+  assert.equal(v.getUint32(40, true), 10);
+  assert.equal(toWav(wav), wav);
 });

@@ -1,5 +1,6 @@
 /**
- * OpenAI transcription (POST /v1/audio/transcriptions).
+ * OpenAI transcription (POST /v1/audio/transcriptions). Also serves OpenAI-compatible hosts such as Groq
+ * (free tier, whisper-large-v3), which return the same verbose_json shape.
  *
  * What each model family can tell us (verified against the live API):
  *  - whisper-1  (verbose_json): word timestamps (needed for hesitation detection) and, per SEGMENT,
@@ -33,8 +34,10 @@ export class OpenAiSttProvider implements SpeechToTextProvider {
     private apiKey = env.openaiApiKey(),
     private model = env.openaiSttModel(),
     private baseUrl = env.openaiBaseUrl(),
+    /** Host label used in the provider id and errors ("openai", "groq"). */
+    private host = "openai",
   ) {
-    this.id = `openai:${model}`;
+    this.id = `${host}:${model}`;
   }
 
   /** The exact request parameters (for auditing; contains no secrets). */
@@ -51,7 +54,7 @@ export class OpenAiSttProvider implements SpeechToTextProvider {
   }
 
   async transcribe(input: TranscribeInput): Promise<Transcript> {
-    if (!this.apiKey) throw new ProviderError(this.id, "OPENAI_API_KEY is not set");
+    if (!this.apiKey) throw new ProviderError(this.id, `${this.host.toUpperCase()}_API_KEY is not set`);
     const verbose = this.model.startsWith("whisper");
 
     const form = new FormData();

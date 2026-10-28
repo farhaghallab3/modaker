@@ -26,7 +26,11 @@ export const env = {
   tafsirJsonDir: () => str("TAFSIR_JSON_DIR", "data/tafsir"),
   ayahAudioBase: () => str("NEXT_PUBLIC_AYAH_AUDIO_BASE", "https://everyayah.com/data/Alafasy_128kbps").replace(/\/+$/, ""),
 
-  sttProvider: () => str("STT_PROVIDER", "openai") as "openai" | "mock",
+  sttProvider: () => str("STT_PROVIDER", "openai") as "openai" | "groq" | "mock",
+  /** Groq's hosted Whisper (OpenAI-compatible API, free tier). Used when STT_PROVIDER=groq. */
+  groqApiKey: () => str("GROQ_API_KEY"),
+  groqBaseUrl: () => str("GROQ_BASE_URL", "https://api.groq.com/openai/v1").replace(/\/+$/, ""),
+  groqSttModel: () => str("GROQ_STT_MODEL", "whisper-large-v3"),
   openaiApiKey: () => str("OPENAI_API_KEY"),
   openaiBaseUrl: () => str("OPENAI_BASE_URL", "https://api.openai.com/v1").replace(/\/+$/, ""),
   openaiSttModel: () => str("OPENAI_STT_MODEL", "whisper-1"),
@@ -76,10 +80,20 @@ export const env = {
       .map((d) => d.trim().toLowerCase())
       .filter(Boolean),
   /**
-   * Spoken assistant answers (OpenAI text-to-speech, output only). On by default when an OpenAI key and SESSION_SECRET exist; "off" hides the speaker.
+   * Spoken assistant answers (text-to-speech, output only). On by default when a Gemini or OpenAI key and SESSION_SECRET exist; "off" hides the speaker.
    * Model/voice were chosen by a real Arabic probe (see src/server/tts/speech.ts); the overrides below are optional.
    */
   assistantTts: () => str("ASSISTANT_TTS", "on").toLowerCase() !== "off",
+  /**
+   * Which voice engine speaks answers. "auto" (default) = Gemini when GEMINI_API_KEY is set (free tier), otherwise OpenAI.
+   * "gemini" / "openai" force one.
+   */
+  ttsProvider: () => str("TTS_PROVIDER", "auto").toLowerCase() as "auto" | "gemini" | "openai",
+  geminiApiKey: () => str("GEMINI_API_KEY"),
+  geminiBaseUrl: () => str("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").replace(/\/+$/, ""),
+  geminiTtsModel: () => str("GEMINI_TTS_MODEL", "gemini-3.8-flash-tts"),
+  /** A prebuilt Gemini voice. "Sulafat" is described by Google as warm. */
+  geminiTtsVoice: () => str("GEMINI_TTS_VOICE", "Sulafat"),
   ttsModel: () => str("TTS_MODEL", "gpt-4o-mini-tts"),
   ttsVoice: () => str("TTS_VOICE", "marin"),
   /** Daily cap on speech requests per server instance (cost protection). */

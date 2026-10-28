@@ -57,8 +57,15 @@ export function getSttProvider(): SpeechToTextProvider {
       cached = second && second !== "off" && second !== model ? new ConsensusSttProvider(primary, new OpenAiSttProvider(env.openaiApiKey(), second)) : primary;
       break;
     }
+    case "groq": {
+      // Groq's hosted Whisper (free tier). Whisper models keep the learner's wrong words, like whisper-1.
+      const { model, overridden } = recitationPrimaryModel(env.groqSttModel());
+      if (overridden) console.warn(`[stt] GROQ_STT_MODEL="${env.groqSttModel()}" is not a Whisper model; using whisper-large-v3.`);
+      cached = new OpenAiSttProvider(env.groqApiKey(), overridden ? "whisper-large-v3" : model, env.groqBaseUrl(), "groq");
+      break;
+    }
     default:
-      throw new Error(`Unknown STT_PROVIDER "${id}" (expected openai | mock)`);
+      throw new Error(`Unknown STT_PROVIDER "${id}" (expected openai | groq | mock)`);
   }
   return cached;
 }
@@ -66,5 +73,5 @@ export function getSttProvider(): SpeechToTextProvider {
 /** Whether the configured server-side provider can actually run. */
 export function sttConfigured(): boolean {
   const id = env.sttProvider();
-  return id === "mock" || (id === "openai" && Boolean(env.openaiApiKey()));
+  return id === "mock" || (id === "openai" && Boolean(env.openaiApiKey())) || (id === "groq" && Boolean(env.groqApiKey()));
 }
