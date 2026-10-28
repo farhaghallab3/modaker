@@ -12,6 +12,7 @@ import type {
   RecitationAnalysis,
   SurahText,
   TafsirEntry,
+  TranslationEntry,
   Transcript,
   SourceRef,
 } from "@/lib/types";
@@ -41,6 +42,8 @@ export const api = {
   mushafPage: (n: number) => fetch(`${BASE}/quran/pages/${n}`).then((r) => json<MushafPage>(r)),
   tafsir: (n: number, source = "muyassar") =>
     fetch(`${BASE}/quran/surahs/${n}/tafsir?source=${source}`).then((r) => json<{ entries: TafsirEntry[]; source: SourceRef }>(r)),
+  translation: (n: number, lang = "en") =>
+    fetch(`${BASE}/quran/surahs/${n}/translation?lang=${lang}`).then((r) => json<{ entries: TranslationEntry[]; source: SourceRef }>(r)),
   transcribe: (audio: Blob, range: AyahRange) => {
     const fd = new FormData();
     const ext = audio.type.includes("mp4") ? "m4a" : audio.type.includes("ogg") ? "ogg" : "webm";

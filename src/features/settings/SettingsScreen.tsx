@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Page, PageHeader } from "@/components/layout/PageHeader";
 import { ReciterSelect } from "@/components/quran/AudioPlayer";
+import { setShowTranslation, useShowTranslation } from "@/lib/quran/translation-pref";
 import { Icon } from "@/components/ui/Icon";
 import { Badge, Button, cn, ConfirmationModal, Field, inputClass, Segmented, Spinner, Toggle } from "@/components/ui/primitives";
 import { useApp } from "@/lib/store/AppProvider";
@@ -56,6 +57,7 @@ export function SettingsScreen() {
   const [signingOut, setSigningOut] = useState(false);
   const push = usePushSubscription();
   const theme = useTheme();
+  const showTranslation = useShowTranslation();
   const timeId = useId();
 
   useEffect(() => setName(profile?.name ?? ""), [profile?.name]);
@@ -136,6 +138,16 @@ export function SettingsScreen() {
       {/* ── Reciter ─────────────────────────────────────────────── */}
       <Section title="القارئ" description="الصوت الذي تُتلى به الآيات في المصحف والحفظ والتسميع.">
         <ReciterSelect />
+      </Section>
+
+      {/* ── English translation ─────────────────────────────────── */}
+      <Section title="الترجمة الإنجليزية" description="English translation of the meanings (Saheeh International), shown verbatim from an approved source.">
+        <Toggle
+          label="اعرض الترجمة تحت كل آية"
+          description="Show the English translation under every ayah in the Quran reader"
+          checked={showTranslation}
+          onChange={setShowTranslation}
+        />
       </Section>
 
       {/* ── Reminders ───────────────────────────────────────────── */}
