@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/primitives";
 import { toArabicDigits } from "@/lib/quran/surahs";
-import { ayahsToRepeat, teacherFeedback } from "@/lib/recitation/coach-feedback";
+import { TEACHER_PHRASES, ayahsToRepeat, teacherFeedback, type TeacherPhraseKey } from "@/lib/recitation/coach-feedback";
 import { playTeacher, stopTeacher } from "@/lib/recitation/teacher-voice";
 import type { RecitationAnalysis } from "@/lib/types";
 
@@ -18,8 +18,11 @@ export function TeacherVoice({
   canListen,
   onListenAyah,
   onRetry,
+  followUp = null,
 }: {
   analysis: RecitationAnalysis;
+  /** Said right after the result sentence once the tajweed check answers (null: no tajweed sentence). */
+  followUp?: TeacherPhraseKey | null;
   canListen: (ayah: number) => boolean;
   onListenAyah: (ayah: number) => void;
   onRetry: () => void;
@@ -28,9 +31,38 @@ export function TeacherVoice({
   const [voice, setVoice] = useState<"idle" | "playing" | "none">("idle");
   const spoke = useRef(false);
 
-  const speak = () => {
+  // The tajweed sentence follows the result sentence: right after it ends, or when the check answers later.
+  const follow = key === "unheard" ? null : followUp;
+  const firstDone = useRef(false);
+  const followSaid = useRef(false);
+  const interrupted = useRef(false);
+  const hadVoice = useRef(false);
+  const followRef = useRef(follow);
+  followRef.current = follow;
+
+  const sayFollowUp = () => {
+    const f = followRef.current;
+    if (!f || followSaid.current || interrupted.current) return;
+    followSaid.current = true;
     setVoice("playing");
-    void playTeacher(key, () => setVoice("idle")).then((ok) => !ok && setVoice("none"));
+    void playTeacher(f, () => setVoice("idle")).then((ok) => !ok && setVoice(hadVoice.current ? "idle" : "none"));
+  };
+
+  const speak = (withFollowUp = false) => {
+    setVoice("playing");
+    if (withFollowUp) followSaid.current = false;
+    void playTeacher(key, () => {
+      setVoice("idle");
+      firstDone.current = true;
+      sayFollowUp();
+    }).then((ok) => {
+      if (ok) {
+        hadVoice.current = true;
+        return;
+      }
+      setVoice("none");
+      firstDone.current = true;
+    });
   };
 
   useEffect(() => {
@@ -41,6 +73,11 @@ export function TeacherVoice({
     return () => stopTeacher();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (follow && firstDone.current) sayFollowUp();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [follow]);
 
   const repeat = ayahsToRepeat(analysis).filter(canListen).slice(0, 3);
   const showRetry = key !== "perfect";
@@ -55,6 +92,7 @@ export function TeacherVoice({
           <p className="text-xs font-semibold text-olive">المعلّم</p>
           <p role="status" className="mt-1 text-[1.05rem] leading-8 text-ink">
             {text}
+            {follow ? <> {TEACHER_PHRASES[follow]}</> : null}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {repeat.map((n) => (
@@ -64,6 +102,7 @@ export function TeacherVoice({
                 variant="secondary"
                 icon="play"
                 onClick={() => {
+                  interrupted.current = true;
                   stopTeacher();
                   setVoice("idle");
                   onListenAyah(n);
@@ -91,9 +130,13 @@ export function TeacherVoice({
                 icon={voice === "playing" ? "stop" : "volume"}
                 onClick={() => {
                   if (voice === "playing") {
+                    interrupted.current = true;
                     stopTeacher();
                     setVoice("idle");
-                  } else speak();
+                  } else {
+                    interrupted.current = false;
+                    speak(true);
+                  }
                 }}
               >
                 {voice === "playing" ? "إيقاف الصوت" : "أعد سماع المعلّم"}

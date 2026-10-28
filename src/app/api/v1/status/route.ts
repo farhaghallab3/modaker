@@ -5,6 +5,7 @@
 import { env } from "@/server/env";
 import { route } from "@/server/http";
 import { sttConfigured } from "@/server/stt/provider";
+import { tajweedConfigured } from "@/server/tajweed";
 import { ttsEngine } from "@/server/tts/speech";
 
 export const runtime = "nodejs";
@@ -19,6 +20,7 @@ export const GET = route(async () => {
       ready: sttConfigured(),
       keys: { groq: Boolean(env.groqApiKey()), openai: Boolean(env.openaiApiKey()) },
     },
+    tajweed: { ready: tajweedConfigured() },
     speech: {
       enabled: env.assistantTts(),
       engine: ttsEngine(),

@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import type { MushafPage } from "@/lib/quran/mushaf";
+import type { TajweedResult } from "@/lib/recitation/tajweed-notes";
 import type {
   AssistantAnswer,
   AyahRange,
@@ -50,6 +51,14 @@ export const api = {
     fd.append("audio", audio, `recitation.${ext}`);
     fd.append("range", JSON.stringify(range));
     return fetch(`${BASE}/recitation/transcribe`, { method: "POST", body: fd }).then((r) => json<Transcript>(r));
+  },
+  tajweedEnabled: () => fetch(`${BASE}/recitation/tajweed`).then((r) => json<{ enabled: boolean }>(r)),
+  tajweed: (audio: Blob, range: AyahRange) => {
+    const fd = new FormData();
+    const ext = audio.type.includes("mp4") ? "m4a" : audio.type.includes("ogg") ? "ogg" : "webm";
+    fd.append("audio", audio, `recitation.${ext}`);
+    fd.append("range", JSON.stringify(range));
+    return fetch(`${BASE}/recitation/tajweed`, { method: "POST", body: fd }).then((r) => json<TajweedResult>(r));
   },
   /** The server loads the expected verses itself; the client only sends the range. */
   analyze: (range: AyahRange, transcript: Transcript) =>

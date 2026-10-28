@@ -8,14 +8,17 @@
 import { toArabicDigits } from "@/lib/quran/surahs";
 import type { RecitationAnalysis } from "@/lib/types";
 
-export type TeacherPhraseKey = "perfect" | "repeat" | "incomplete" | "unsure" | "unheard";
+export type TeacherPhraseKey = "perfect" | "repeat" | "incomplete" | "unsure" | "unheard" | "tajweedFix" | "tajweedOk";
 
 export const TEACHER_PHRASES: Record<TeacherPhraseKey, string> = {
-  perfect: "ما شاء الله، أحسنت! تلاوتك صحيحة.",
+  perfect: "ما شاء الله، أحسنت! حفظك صحيح.",
   repeat: "أحسنت المحاولة. بعض الكلمات تحتاج مراجعة، وهي مظلّلة أمامك. استمع إلى الشيخ، ثم أعد المحاولة.",
   incomplete: "أحسنت فيما قرأت. لم أسمع بقية المقطع، فأكمل التسميع.",
   unsure: "لم أتأكد من بعض الكلمات. أعد الجزء المظلّل بصوت أوضح.",
   unheard: "لم أسمعك بوضوح. اقترب من الميكروفون، ثم أعد المحاولة.",
+  // Said after the tajweed check (when it runs), following the sentence above.
+  tajweedFix: "وفي التجويد ملاحظات على بعض الكلمات، كتبتها لك تحت. استمع إلى الشيخ فيها، ثم أعدها بتأنٍّ.",
+  tajweedOk: "والتجويد فيما سمعته سليم، بارك الله فيك.",
 };
 
 /** Short stable fingerprint of a sentence: a recorded file is used only while its sentence is unchanged. */

@@ -3,6 +3,7 @@
  * The Blob lives in memory only until the request completes; nothing is
  * written to storage on the device.
  */
+import { startTajweedCheck } from "@/lib/recitation/tajweed-check";
 import { api, ApiError } from "@/lib/api";
 import type { Transcript } from "@/lib/types";
 import { createLevelMeter, hasGetUserMedia, openMicrophone, stopStream } from "./microphone";
@@ -151,6 +152,8 @@ export const serverUploadRecognizer: SpeechRecognizer = {
           sttLog("upload", "no-audio-abort", { bytes: blob.size, chunks: chunkCount });
           throw new SpeechError("no-audio", `recorded ${blob.size} bytes in ${chunkCount} chunk(s)`);
         }
+        // The tajweed check (when set up) listens to the same recording at the same time.
+        startTajweedCheck(blob, range);
         try {
           sttLog("upload", "post-start", { bytes: blob.size });
           const started = performance.now();

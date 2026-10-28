@@ -9,6 +9,7 @@ import { SourceLine } from "@/components/quran/QuranVerse";
 import { useAyahAudio } from "@/components/quran/useAyahAudio";
 import { BetaNote, RecitationFeedback, TextOnlyNote } from "@/components/recitation/RecitationFeedback";
 import { RecitationRecorder } from "@/components/recitation/RecitationRecorder";
+import { TajweedNotes, type TajweedState } from "@/components/recitation/TajweedNotes";
 import { TeacherVoice } from "@/components/recitation/TeacherVoice";
 import { SelfGradeButtons } from "@/components/review/SelfReview";
 import { useRecitationRecorder } from "@/components/recitation/useRecitationRecorder";
@@ -17,6 +18,7 @@ import { Badge, Button, ButtonLink, cn, EmptyState, ErrorState, Toggle } from "@
 import { FocusActionBar, FocusHeader } from "@/features/focus/FocusHeader";
 import { SOURCE_UNAVAILABLE } from "@/features/quran/states";
 import { api, useOnline, useSurah } from "@/lib/api";
+import { forgetTajweedCheck, prepareTajweedCheck, takeTajweedCheck } from "@/lib/recitation/tajweed-check";
 import { prepareTeacherVoice, stopTeacher } from "@/lib/recitation/teacher-voice";
 import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import { analyzeRecitationWithOverrun } from "@/lib/recitation/compare";
@@ -176,6 +178,8 @@ function ReciteSession({
   const [listen, setListen] = useState(false);
   const [askAyah, setAskAyah] = useState<number | null>(null);
   const lastTranscript = useRef<Transcript | null>(null);
+  const [tajweed, setTajweed] = useState<TajweedState | null>(null);
+  const tajweedRun = useRef(0);
   const resultRef = useRef<HTMLDivElement>(null);
   const versesRef = useRef(verses);
   versesRef.current = verses;
@@ -186,6 +190,15 @@ function ReciteSession({
   const analyze = useCallback(
     async (t: Transcript) => {
       lastTranscript.current = t;
+      // A new recording also started a tajweed check (when it is set up): show it next to the word result.
+      const check = takeTajweedCheck();
+      if (check) {
+        const run = ++tajweedRun.current;
+        setTajweed({ state: "checking" });
+        void check.then((r) => {
+          if (run === tajweedRun.current) setTajweed(r ? { state: "done", result: r } : { state: "failed" });
+        });
+      }
       setStage("analyzing");
       try {
         // The server loads the verified text itself and returns the alignment.
@@ -212,7 +225,10 @@ function ReciteSession({
 
   // Prepare the teacher's voice while the learner recites, so it speaks the moment the result is ready.
   useEffect(() => {
-    if (online) void prepareTeacherVoice();
+    if (online) {
+      void prepareTeacherVoice();
+      void prepareTajweedCheck();
+    }
   }, [online]);
 
   useEffect(() => {
@@ -221,6 +237,9 @@ function ReciteSession({
 
   function retry() {
     stopTeacher();
+    forgetTajweedCheck();
+    tajweedRun.current++;
+    setTajweed(null);
     audio.stop();
     setListen(false);
     setAnalysis(null);
@@ -414,7 +433,22 @@ function ReciteSession({
                 if (i >= 0) audio.playOne(i);
               }}
               onRetry={retry}
+              followUp={
+                tajweed?.state === "done" && tajweed.result.matched > 0 ? (tajweed.result.notes.length ? "tajweedFix" : "tajweedOk") : null
+              }
             />
+            {tajweed && analysis.recognition === "good" ? (
+              <TajweedNotes
+                tajweed={tajweed}
+                ayahText={(n) => verses.find((v) => v.ayah === n)?.textUthmani}
+                canListen={(n) => verses.some((v) => v.ayah === n)}
+                onListenAyah={(n) => {
+                  stopTeacher();
+                  const i = verses.findIndex((v) => v.ayah === n);
+                  if (i >= 0) audio.playOne(i);
+                }}
+              />
+            ) : null}
             <RecitationFeedback
               analysis={analysis}
               note={
