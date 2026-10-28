@@ -42,6 +42,17 @@ class Classify(unittest.TestCase):
         self.assertIsNone(classify(err("tajweed", rules=[NormalMaddRule()], exp=2, heard=2)))
         self.assertEqual(classify(err("tajweed", rules=[NormalMaddRule()], exp=2, heard=1))["rule"], "madd_tabii")
 
+    def test_aared_allows_two_four_six(self):
+        class AaredMaddRule:
+            correctness_type = "count"
+        for heard in (2, 4, 6):
+            self.assertIsNone(classify(err("tajweed", rules=[AaredMaddRule()], exp=4, heard=heard)))
+        self.assertEqual(classify(err("tajweed", rules=[AaredMaddRule()], exp=4, heard=1))["rule"], "madd_aared")
+
+    def test_harakat_length_only_is_not_a_mistake(self):
+        self.assertIsNone(classify(err("tashkeel", e_ph="لَاا", p_ph="لَااا")))
+        self.assertEqual(classify(err("tashkeel", e_ph="لَ", p_ph="لُ"))["kind"], "harakat")
+
     def test_qalqalah_only_when_missing(self):
         self.assertIsNone(classify(err("tajweed", rules=[Qalqalah()], replaced=[Qalqalah()])))
         self.assertEqual(classify(err("tajweed", rules=[Qalqalah()], missing=[Qalqalah()]))["rule"], "qalqalah")

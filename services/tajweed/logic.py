@@ -156,8 +156,20 @@ def _madd_is_wrong(key: str, expected: Optional[int], heard: Optional[int]) -> b
         return heard < 2 or heard > 3
     if key == "ghunnah":
         return heard <= 2
+    if key in ("madd_aared", "madd_leen"):
+        # At a stop these may be read 2, 4 or 6 counts: only a missing or wildly long madd is a mistake.
+        return heard < 2 or heard > 7
     # Longer madds: readers differ by a count (4 or 5, 4 or 6), so only flag clear gaps.
     return abs(heard - expected) >= 2
+
+
+def _squeeze(s: str) -> str:
+    """Collapse repeated characters ("لَاا" → "لَا")."""
+    out = []
+    for ch in s or "":
+        if not out or out[-1] != ch:
+            out.append(ch)
+    return "".join(out)
 
 
 def classify(err: Any) -> Optional[dict]:
@@ -170,6 +182,9 @@ def classify(err: Any) -> Optional[dict]:
             return None
         return {"kind": "letters", "op": op, "rule": None, "expectedLen": None, "heardLen": None}
     if etype == "tashkeel":
+        # Same vowels, only held longer or shorter: timing, not a wrong haraka.
+        if _squeeze(getattr(err, "expected_ph", "")) == _squeeze(getattr(err, "preditected_ph", "")):
+            return None
         return {"kind": "harakat", "op": op, "rule": None, "expectedLen": None, "heardLen": None}
     if etype != "tajweed":
         return None

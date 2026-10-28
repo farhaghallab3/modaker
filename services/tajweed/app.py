@@ -32,6 +32,7 @@ from muaalem_model import greedy_ctc, load_muaalem
 
 MODEL = os.environ.get("MUAALEM_MODEL", "obadx/muaalem-model-v3_2")
 SECRET = os.environ.get("MODAKER_KEY", "")
+DEBUG = os.environ.get("TAJWEED_DEBUG", "1") == "1"
 MAX_BYTES = 15 * 1024 * 1024
 MAX_SECONDS = 120
 
@@ -47,7 +48,7 @@ MOSHAF = MoshafAttributes(
 # Loaded once at start-up. On ZeroGPU the model is placed on "cuda" here and really moves to the GPU
 # only inside @spaces.GPU calls.
 DEVICE = "cuda" if os.environ.get("SPACES_ZERO_GPU") or torch.cuda.is_available() else "cpu"
-DTYPE = torch.float16 if DEVICE == "cuda" else torch.float32
+DTYPE = torch.bfloat16 if DEVICE == "cuda" else torch.float32  # the model was trained in bfloat16
 model, processor, id_to_token = load_muaalem(MODEL)
 model.to(DEVICE, dtype=DTYPE)
 search = PhoneticSearch()
@@ -156,6 +157,11 @@ def check(audio_b64: str, surah: float, from_: float, to: float, key: str) -> di
         text = space.join(words)
         ref = quran_phonetizer(text, MOSHAF, remove_spaces=True)
         errors = explain_error(uthmani_text=text, ref_ph_text=ref.phonemes, predicted_ph_text=ph, mappings=ref.mappings)
+        if DEBUG:
+            # Phoneme strings only (no audio): lets us see why a note was given.
+            print(f"[check] {surah}:{r.start.aya_idx}-{r.end.aya_idx}\n  expected: {ref.phonemes}\n  heard:    {ph}", flush=True)
+            for e in errors:
+                print(f"  {e.error_type}/{e.speech_error_type} pos={e.uthmani_pos} exp={e.expected_ph!r} got={e.preditected_ph!r} len={e.expected_len}/{e.predicted_len}", flush=True)
         notes.extend(notes_from_errors(errors, refs, word_offsets(words, len(space))))
 
     return {
