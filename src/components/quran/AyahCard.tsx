@@ -7,7 +7,10 @@ import { toArabicDigits } from "@/lib/quran/surahs";
 import type { Ayah, AyahStatus } from "@/lib/types";
 import { QuranVerse } from "./QuranVerse";
 import { TafsirNote } from "./TafsirNote";
+import { TranslationNote } from "./TranslationNote";
+import { useAyahTranslation } from "./useAyahTranslation";
 import { useTafsir } from "./useTafsir";
+import { useShowTranslation } from "@/lib/quran/translation-pref";
 
 export const STATUS_META: Record<AyahStatus, { label: string; swatch: string; edge: string }> = {
   new: { label: "جديدة", swatch: "bg-parchment ring-1 ring-inset ring-line", edge: "border-transparent" },
@@ -48,6 +51,11 @@ export const AyahCard = memo(function AyahCard({
   const [flash, setFlash] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tafsir = useTafsir(ayah.surah, meaning);
+  // English translation: shown for every ayah when the setting is on, or toggled per ayah.
+  const alwaysEnglish = useShowTranslation();
+  const [englishToggle, setEnglishToggle] = useState<boolean | null>(null);
+  const english = englishToggle ?? alwaysEnglish;
+  const translation = useAyahTranslation(ayah.surah, english);
   const memorized = status !== "new" && status !== "learning";
   const n = toArabicDigits(ayah.ayah);
 
@@ -105,7 +113,7 @@ export const AyahCard = memo(function AyahCard({
             className={cn(
               "flex items-center gap-0.5 transition-opacity duration-200",
               "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100",
-              (playing || meaning || bookmarked) && "[@media(hover:hover)]:opacity-100",
+              (playing || meaning || english || bookmarked) && "[@media(hover:hover)]:opacity-100",
             )}
           >
             <Action icon={playing ? "volume" : "play"} label={playing ? `تُتلى الآية ${n}` : `استمع للآية ${n}`} active={playing} onClick={() => onPlay(ayah)} />
@@ -130,6 +138,13 @@ export const AyahCard = memo(function AyahCard({
             />
             <Action icon="book" label={meaning ? "إخفاء المعنى" : "اعرض المعنى"} active={meaning} expanded={meaning} onClick={() => setMeaning((v) => !v)} />
             <Action
+              icon="globe"
+              label={english ? "إخفاء الترجمة الإنجليزية" : "الترجمة الإنجليزية"}
+              active={english}
+              expanded={english}
+              onClick={() => setEnglishToggle(!english)}
+            />
+            <Action
               icon="review"
               label="أضف إلى المراجعة"
               active={status === "weak"}
@@ -140,6 +155,16 @@ export const AyahCard = memo(function AyahCard({
             />
           </div>
         </div>
+
+        {english ? (
+          <TranslationNote
+            className="mt-2"
+            entry={translation.data?.byKey.get(ayah.key) ?? null}
+            loading={translation.loading}
+            error={!!translation.error}
+            onRetry={translation.retry}
+          />
+        ) : null}
 
         {meaning ? (
           <TafsirNote

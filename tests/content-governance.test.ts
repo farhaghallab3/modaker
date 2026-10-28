@@ -202,7 +202,7 @@ test("the editorial/demo source can never be used by the assistant", () => {
 });
 
 test("only the current, already-in-use sources are usable", () => {
-  assert.deepEqual(approvedSourceIds().sort(), ["hadeethenc:hadith", "quran-com:uthmani", "tafsir:muyassar", "tanzil:uthmani"]);
+  assert.deepEqual(approvedSourceIds().sort(), ["hadeethenc:hadith", "quran-com:uthmani", "quranenc:english_saheeh", "tafsir:muyassar", "tanzil:uthmani"]);
   // the one approved hadith source: terms reviewed (verbatim use + attribution), used only via the dedicated hadith provider
   assert.equal(KNOWLEDGE_SOURCES["hadeethenc:hadith"].kind, "hadith");
   assert.equal(KNOWLEDGE_SOURCES["hadeethenc:hadith"].licenseVerified, true);

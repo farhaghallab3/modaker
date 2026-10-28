@@ -30,6 +30,7 @@ export const env = {
 
   quranProvider: () => str("QURAN_PROVIDER", "quran-com") as "quran-com" | "database" | "json",
   quranComApi: () => str("QURAN_COM_API", "https://api.quran.com/api/v4").replace(/\/+$/, ""),
+  quranencApi: () => str("QURANENC_API", "https://quranenc.com/api/v1").replace(/\/+$/, ""),
   quranJsonDir: () => str("QURAN_JSON_DIR", "data/quran"),
   tafsirJsonDir: () => str("TAFSIR_JSON_DIR", "data/tafsir"),
   ayahAudioBase: () => str("NEXT_PUBLIC_AYAH_AUDIO_BASE", "https://everyayah.com/data/Alafasy_128kbps").replace(/\/+$/, ""),

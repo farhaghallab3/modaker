@@ -52,6 +52,14 @@ export interface TafsirEntry {
   source: SourceRef;
 }
 
+/** A verified translation of one ayah's meaning, shown verbatim with its source. */
+export interface TranslationEntry {
+  key: string; // "19:32"
+  text: string;
+  footnotes?: string;
+  source: SourceRef;
+}
+
 export interface AyahRange {
   surah: number;
   from: number;

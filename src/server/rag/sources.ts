@@ -34,6 +34,8 @@ export interface KnowledgeSource extends SourceRef {
   editorial?: boolean;
   /** Quran.com API v4 tafsir resource id, for tafsir sources. */
   quranComTafsirId?: number;
+  /** QuranEnc translation key (e.g. "english_saheeh"), for translation sources. */
+  quranencKey?: string;
 
   // ── registry metadata ──
   tier: 1 | 2 | 3 | 4;
@@ -139,6 +141,30 @@ export const KNOWLEDGE_SOURCES: Record<string, KnowledgeSource> = {
     requiresHumanReview: false,
     licenseNote: PDF_NOTE,
     ...PLANNED,
+  },
+
+  "quranenc:english_saheeh": {
+    id: "quranenc:english_saheeh",
+    title: "Saheeh International — English translation of the meanings",
+    publisher: "QuranEnc.com (جمعية خدمة المحتوى الإسلامي باللغات)",
+    url: "https://quranenc.com/en/browse/english_saheeh",
+    kind: "translation",
+    language: "en",
+    quranencKey: "english_saheeh",
+    description: "Reviewed English translation of the meanings (Saheeh International) served by the QuranEnc API. Shown verbatim under each ayah; never generated, never used as Quran text.",
+    tier: 1,
+    authorityType: "scholarly_foundation",
+    languages: ["en"],
+    apiAvailable: true,
+    apiDocsUrl: "https://quranenc.com/en/home/api",
+    mcpAvailable: false,
+    autoRetrievalSuitable: false,
+    requiresHumanReview: false,
+    licenseNote: "QuranEnc publishes reviewed translations for free use with attribution. A person should still record the official terms (licenseVerified).",
+    licenseVerified: false,
+    enabled: true,
+    reviewState: "approved",
+    reviewNote: "Approved English translation named in the competition pitch (slide 10: «ترجمة معاني معتمدة بالإنجليزية»). Display only — not indexed for the assistant. Content reviewer to confirm.",
   },
 
   // ── Tier 2 — Quran understanding ───────────────────────────────────────
@@ -339,6 +365,9 @@ export function sourceRef(id: string): SourceRef {
   if (!s) throw new Error(`Unknown knowledge source: ${id}`);
   return { id: s.id, title: s.title, publisher: s.publisher, url: s.url };
 }
+
+/** The approved English translation shown under ayahs. */
+export const ENGLISH_TRANSLATION_SOURCE_ID = "quranenc:english_saheeh";
 
 export function tafsirSourceRef(slug: TafsirSlug): SourceRef {
   return sourceRef(TAFSIR_SOURCE_IDS[slug]);
