@@ -77,6 +77,9 @@ export const api = {
     }
     return res.blob();
   },
+  /** Signed payloads for the teacher's fixed feedback sentences (null when speech is off). */
+  teacherVoice: () =>
+    fetch(`${BASE}/recitation/teacher-voice`).then((r) => json<{ phrases: Record<string, { text: string; exp: number; sig: string }> | null }>(r)),
   subscribePush: (subscription: PushSubscriptionJSON) =>
     fetch(`${BASE}/notifications/subscribe`, {
       method: "POST",

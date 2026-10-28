@@ -4,7 +4,8 @@ import { useId, useMemo, useState, type ReactNode } from "react";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Badge, cn, ProgressRing, Segmented } from "@/components/ui/primitives";
 import { toArabicDigits } from "@/lib/quran/surahs";
-import { ayahCountLabel, percentLabel } from "@/lib/review/labels";
+import { ayahCountLabel, ayahCountLabelGen, percentLabel } from "@/lib/review/labels";
+import { ayahNumbers, ayahsNotRecited } from "@/lib/recitation/coach-feedback";
 import type { AyahRecitationResult, MistakeType, RecitationAnalysis, RecitationMistake } from "@/lib/types";
 
 /** Persistent honesty note: text matching only, no tajweed assessment. */
@@ -61,6 +62,7 @@ export function RecitationFeedback({
   const [filter, setFilter] = useState<"all" | "issues">("all");
   const mastered = analysis.ayahs.filter((a) => a.status === "mastered").length;
   const unsure = analysis.ayahs.filter((a) => a.status === "uncertain").length;
+  const notRecited = ayahsNotRecited(analysis);
   const needs = analysis.ayahs.length - mastered - unsure;
   const shown = filter === "all" ? analysis.ayahs : analysis.ayahs.filter((a) => a.status !== "mastered" || a.mistakes.length);
   const acc = analysis.expectedWords ? analysis.matchedWords / analysis.expectedWords : 0;
@@ -99,7 +101,11 @@ export function RecitationFeedback({
               تطابقت {toArabicDigits(analysis.matchedWords)} من {toArabicDigits(analysis.expectedWords)} كلمة
             </h2>
             <p className="mt-1.5 text-[0.95rem] leading-7 text-ink/75" aria-live="polite">
-              {analysis.uncertainWords > 0 ? "لم نتأكد من بعض الكلمات، فلا نحكم على تلاوتك فيها. أعد الجزء المظلّل بخط منقّط." : encouragement(acc)}
+              {notRecited.length && notRecited.length === unsure
+                ? `لم نسمع ${ayahNumbers(notRecited)}، فلم نحتسبها عليك. أكمل التسميع.`
+                : analysis.uncertainWords > 0
+                  ? "لم نتأكد من بعض الكلمات، فلا نحكم على تلاوتك فيها. أعد الجزء المظلّل بخط منقّط."
+                  : encouragement(acc)}
             </p>
             <div className="mt-4 flex flex-wrap justify-center sm:justify-start gap-2">
               <span className="inline-flex items-center gap-2 rounded-full bg-olive-100 px-3.5 py-1.5 text-sm text-olive-600">
@@ -115,7 +121,7 @@ export function RecitationFeedback({
               {unsure ? (
                 <span className="inline-flex items-center gap-2 rounded-full bg-parchment px-3.5 py-1.5 text-sm text-ink/75 ring-1 ring-sand/40">
                   <Icon name="info" size={16} />
-                  لم نتأكد من {ayahCountLabel(unsure)} — أعد الجزء
+                  {notRecited.length === unsure ? `لم نسمع ${ayahCountLabelGen(unsure)}` : `لم نتأكد من ${ayahCountLabelGen(unsure)}`} — أعد الجزء
                 </span>
               ) : null}
             </div>
