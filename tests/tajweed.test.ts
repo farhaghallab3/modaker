@@ -5,7 +5,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { GET, POST } from "../src/app/api/v1/recitation/tajweed/route";
-import { checkTajweed, tajweedConfigured } from "../src/server/tajweed";
+import { checkTajweed, gradioComplete, tajweedConfigured } from "../src/server/tajweed";
 import { ProviderError } from "../src/server/errors";
 import { rateLimiter } from "../src/server/rate-limit";
 import { TAJWEED_RULES, noteWord, parseTajweedResult, tajweedNoteText, type TajweedNote } from "../src/lib/recitation/tajweed-notes";
@@ -92,24 +92,38 @@ test("teacher has fixed tajweed sentences (no Quran words)", () => {
   assert.ok(TEACHER_PHRASES.tajweedOk.includes("التجويد"));
 });
 
-test("client sends audio + range with the shared key and validates the answer", async () => {
-  let seen: { url: string; key: string | null; surah: unknown; from: unknown; to: unknown; audio: unknown } | null = null;
-  const fake = (async (url: string, init: RequestInit) => {
-    const fd = init.body as FormData;
-    seen = { url, key: new Headers(init.headers).get("x-modaker-key"), surah: fd.get("surah"), from: fd.get("from"), to: fd.get("to"), audio: fd.get("audio") };
-    return new Response(JSON.stringify({ ok: true, matched: 1, notes: [note(), note({ ayah: 99 })] }), { status: 200 });
+/** A fake Gradio Space: POST starts a job, GET returns its server-sent events. */
+function fakeGradio(result: unknown, calls: { url: string; init?: RequestInit }[] = []) {
+  return (async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    if (init?.method === "POST") return new Response(JSON.stringify({ event_id: "ev-1" }), { status: 200 });
+    return new Response(`event: generating\ndata: null\n\nevent: complete\ndata: ${JSON.stringify([result])}\n\n`, { status: 200 });
   }) as unknown as typeof fetch;
-  const r = await checkTajweed(new Uint8Array([1, 2, 3]).buffer, "audio/webm", range, fake);
-  assert.ok(seen);
-  const s = seen as unknown as { url: string; key: string; surah: string; from: string; to: string; audio: Blob };
-  assert.equal(s.url, "https://checker.test/check");
-  assert.equal(s.key, "k-123");
-  assert.deepEqual([s.surah, s.from, s.to], ["2", "3", "5"]);
-  assert.equal(s.audio.size, 3);
-  assert.equal(r.notes.length, 1);
+}
+
+test("gradio events: the complete event's data is read, an error event gives null", () => {
+  assert.deepEqual(gradioComplete('event: heartbeat\ndata: null\n\nevent: complete\ndata: [{"ok":true}]\n'), { ok: true });
+  assert.equal(gradioComplete("event: error\ndata: null\n"), null);
+  assert.equal(gradioComplete(""), null);
+});
+
+test("client sends audio (base64) + range + key to the Gradio API and validates the answer", async () => {
+  process.env.TAJWEED_HF_TOKEN = "hf_x";
+  const calls: { url: string; init?: RequestInit }[] = [];
+  try {
+    const r = await checkTajweed(new Uint8Array([1, 2, 3]).buffer, "audio/webm", range, fakeGradio({ ok: true, matched: 1, notes: [note(), note({ ayah: 99 })] }, calls));
+    assert.equal(calls[0].url, "https://checker.test/gradio_api/call/check");
+    assert.deepEqual(JSON.parse(String(calls[0].init?.body)).data, ["AQID", 2, 3, 5, "k-123"]);
+    assert.equal(new Headers(calls[0].init?.headers).get("authorization"), "Bearer hf_x");
+    assert.equal(calls[1].url, "https://checker.test/gradio_api/call/check/ev-1");
+    assert.equal(r.notes.length, 1);
+  } finally {
+    delete process.env.TAJWEED_HF_TOKEN;
+  }
 
   const down = (async () => new Response("no", { status: 500 })) as unknown as typeof fetch;
   await assert.rejects(checkTajweed(new ArrayBuffer(3), "audio/webm", range, down), ProviderError);
+  await assert.rejects(checkTajweed(new ArrayBuffer(3), "audio/webm", range, fakeGradio({ ok: false, error: "unauthorized" })), /unauthorized/);
 });
 
 const form = (rangeJson = JSON.stringify(range)) => {
@@ -128,7 +142,7 @@ test("route: off until both TAJWEED_URL and TAJWEED_KEY are set", async () => {
 });
 
 test("route: forwards to the checker and returns the notes; checker failure → 502", async () => {
-  globalThis.fetch = (async () => new Response(JSON.stringify({ matched: 1, notes: [note()] }), { status: 200 })) as unknown as typeof fetch;
+  globalThis.fetch = fakeGradio({ ok: true, matched: 1, notes: [note()] });
   const ok = await POST(form(), undefined);
   assert.equal(ok.status, 200);
   const body = await ok.json();

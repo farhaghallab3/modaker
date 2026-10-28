@@ -1,9 +1,5 @@
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.7.1+cpu
+torch>=2.7.0
 transformers==4.55.4
 quran-muaalem==0.2.2
 quran-transcript==0.6.4
-fastapi==0.116.1
-uvicorn==0.35.0
-python-multipart==0.0.20
 numpy>=2.2.6

@@ -1,7 +1,9 @@
 """Modaker tajweed checker: a small free server around the open Quran Muaalem model.
 
-POST /check  (multipart: audio file; form fields surah, from, to; header x-modaker-key)
-  → {"ok": true, "notes": [...], "pieces": n, "matched": m, "seconds": s}
+Runs as a free Hugging Face Space (Gradio SDK, ZeroGPU). Modaker calls its API:
+  POST /gradio_api/call/check  {"data": [audio_base64, surah, from, to, key]}  → {"event_id": ...}
+  GET  /gradio_api/call/check/<event_id>  → server-sent events; "complete" carries [result]
+  result = {"ok": true, "notes": [...], "pieces": n, "matched": m, "seconds": s}  or  {"ok": false, "error": ...}
 
 The model (obadx/muaalem-model-v3_2, MIT) hears the recitation as phonemes; quran_transcript
 builds the correct phonemes for the same words (Hafs) and explains the differences.
@@ -10,15 +12,18 @@ Audio is decoded in memory and dropped after the request. Nothing is stored or l
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hmac
 import os
 import subprocess
-import threading
 import time
 
+import gradio as gr
 import numpy as np
+import spaces
 import torch
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from transformers import AutoFeatureExtractor
 
 from quran_transcript import Aya, alphabet as alph, explain_error, quran_phonetizer
 from quran_transcript.phonetics.moshaf_attributes import MoshafAttributes
@@ -26,7 +31,6 @@ from quran_transcript.phonetics.search import NoPhonemesSearchResult, PhoneticSe
 from quran_muaalem.decode import phonemes_level_greedy_decode
 from quran_muaalem.modeling.modeling_multi_level_ctc import Wav2Vec2BertForMultilevelCTC
 from quran_muaalem.modeling.multi_level_tokenizer import MultiLevelTokenizer
-from transformers import AutoFeatureExtractor
 
 from logic import SR, WordRef, finalize, notes_from_errors, split_on_silence, word_offsets
 
@@ -44,60 +48,48 @@ MOSHAF = MoshafAttributes(
     madd_aared_len=4,
 )
 
-torch.set_num_threads(max(1, os.cpu_count() or 1))
-app = FastAPI(title="Modaker tajweed checker", docs_url=None, redoc_url=None)
-
-_lock = threading.Lock()
-_state: dict = {}
-
-
-def _load():
-    with _lock:
-        if not _state:
-            model = Wav2Vec2BertForMultilevelCTC.from_pretrained(MODEL)
-            model.to("cpu", dtype=torch.float32)  # bfloat16 is slow on most CPUs
-            model.eval()
-            _state["model"] = model
-            _state["processor"] = AutoFeatureExtractor.from_pretrained(MODEL)
-            _state["vocab"] = MultiLevelTokenizer(MODEL).id_to_vocab["phonemes"]
-            _state["search"] = PhoneticSearch()
-    return _state
-
-
-@app.on_event("startup")
-def _warm():
-    threading.Thread(target=_load, daemon=True).start()
+# Loaded once at start-up. On ZeroGPU the model is placed on "cuda" here and really moves to the GPU
+# only inside @spaces.GPU calls.
+DEVICE = "cuda" if os.environ.get("SPACES_ZERO_GPU") or torch.cuda.is_available() else "cpu"
+DTYPE = torch.float16 if DEVICE == "cuda" else torch.float32
+model = Wav2Vec2BertForMultilevelCTC.from_pretrained(MODEL)
+model.to(DEVICE, dtype=DTYPE)
+model.eval()
+processor = AutoFeatureExtractor.from_pretrained(MODEL)
+vocab = MultiLevelTokenizer(MODEL).id_to_vocab["phonemes"]
+search = PhoneticSearch()
 
 
 def _decode_audio(data: bytes) -> np.ndarray:
     """Any browser format (webm/opus, mp4/aac, ogg, wav) → 16 kHz mono float32, via ffmpeg."""
-    try:
-        out = subprocess.run(
-            ["ffmpeg", "-nostdin", "-v", "error", "-i", "pipe:0", "-ac", "1", "-ar", str(SR), "-f", "f32le", "pipe:1"],
-            input=data,
-            capture_output=True,
-            timeout=60,
-            check=True,
-        ).stdout
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        raise HTTPException(415, "unreadable audio")
+    out = subprocess.run(
+        ["ffmpeg", "-nostdin", "-v", "error", "-i", "pipe:0", "-ac", "1", "-ar", str(SR), "-f", "f32le", "pipe:1"],
+        input=data,
+        capture_output=True,
+        timeout=60,
+        check=True,
+    ).stdout
     return np.frombuffer(out, dtype=np.float32).copy()
 
 
+@spaces.GPU(duration=60)
 @torch.inference_mode()
-def _phonemes(st: dict, piece: np.ndarray) -> str:
-    feats = st["processor"](piece, sampling_rate=SR, return_tensors="pt")
-    feats = {k: v.to("cpu", dtype=torch.float32) for k, v in feats.items()}
-    logits = st["model"](**feats, return_dict=False)[0]["phonemes"]
-    probs = torch.nn.functional.softmax(logits, dim=-1).to(torch.float32)
-    return phonemes_level_greedy_decode(probs, st["vocab"])[0].text
+def _phonemes(pieces: list[np.ndarray]) -> list[str]:
+    out = []
+    for piece in pieces:
+        feats = processor(piece, sampling_rate=SR, return_tensors="pt")
+        feats = {k: v.to(DEVICE, dtype=DTYPE) for k, v in feats.items()}
+        logits = model(**feats, return_dict=False)[0]["phonemes"]
+        probs = torch.nn.functional.softmax(logits.float(), dim=-1).cpu()
+        out.append(phonemes_level_greedy_decode(probs, vocab)[0].text)
+    return out
 
 
-def _locate(st: dict, ph: str, surah: int, first: int, last: int):
+def _locate(ph: str, surah: int, first: int, last: int):
     """Where in the requested ayahs this piece was recited (or None)."""
     for ratio in (0.15, 0.3):
         try:
-            results = st["search"].search(ph, error_ratio=ratio)
+            results = search.search(ph, error_ratio=ratio)
         except NoPhonemesSearchResult:
             continue
         for r in results:
@@ -125,43 +117,42 @@ def _span_words(r) -> tuple[list[str], list[WordRef]]:
     return words, refs
 
 
-@app.get("/")
-def health():
-    return {"ok": True, "ready": bool(_state), "model": MODEL}
-
-
-@app.post("/check")
-async def check(
-    audio: UploadFile = File(...),
-    surah: int = Form(...),
-    from_: int = Form(..., alias="from"),
-    to: int = Form(...),
-    x_modaker_key: str = Header(default=""),
-):
-    if not SECRET or not hmac.compare_digest(x_modaker_key, SECRET):
-        raise HTTPException(401, "unauthorized")
+def check(audio_b64: str, surah: float, from_: float, to: float, key: str) -> dict:
+    if not SECRET or not hmac.compare_digest(str(key or ""), SECRET):
+        return {"ok": False, "error": "unauthorized"}
+    try:
+        surah, from_, to = int(surah), int(from_), int(to)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "invalid range"}
     if not (1 <= surah <= 114 and 1 <= from_ <= to and to - from_ < 40):
-        raise HTTPException(400, "invalid range")
-    data = await audio.read()
+        return {"ok": False, "error": "invalid range"}
+    try:
+        data = base64.b64decode(audio_b64 or "", validate=True)
+    except (binascii.Error, ValueError):
+        return {"ok": False, "error": "bad audio"}
     if not data or len(data) > MAX_BYTES:
-        raise HTTPException(413, "audio too large")
+        return {"ok": False, "error": "audio too large"}
 
     t0 = time.time()
-    wave = _decode_audio(data)
+    try:
+        wave = _decode_audio(data)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return {"ok": False, "error": "unreadable audio"}
     del data
     if len(wave) > MAX_SECONDS * SR:
-        raise HTTPException(413, "audio too long")
-    st = _load()
+        return {"ok": False, "error": "audio too long"}
 
-    pieces = split_on_silence(wave)
+    spans = split_on_silence(wave)
+    phonemes = _phonemes([wave[s:e] for s, e in spans]) if spans else []
+    del wave
+
     notes: list[dict] = []
     matched = 0
     space = alph.uthmani.space
-    for s, e in pieces:
-        ph = _phonemes(st, wave[s:e])
+    for ph in phonemes:
         if len(ph) < 6:
             continue
-        r = _locate(st, ph, surah, from_, to)
+        r = _locate(ph, surah, from_, to)
         if r is None:
             continue
         words, refs = _span_words(r)
@@ -172,13 +163,32 @@ async def check(
         ref = quran_phonetizer(text, MOSHAF, remove_spaces=True)
         errors = explain_error(uthmani_text=text, ref_ph_text=ref.phonemes, predicted_ph_text=ph, mappings=ref.mappings)
         notes.extend(notes_from_errors(errors, refs, word_offsets(words, len(space))))
-    del wave
 
     return {
         "ok": True,
         "model": MODEL,
-        "pieces": len(pieces),
+        "pieces": len(spans),
         "matched": matched,
         "seconds": round(time.time() - t0, 1),
         "notes": finalize(notes),
     }
+
+
+demo = gr.Interface(
+    fn=check,
+    inputs=[
+        gr.Textbox(label="audio (base64)"),
+        gr.Number(label="surah", precision=0),
+        gr.Number(label="from", precision=0),
+        gr.Number(label="to", precision=0),
+        gr.Textbox(label="key", type="password"),
+    ],
+    outputs=gr.JSON(label="result"),
+    title="Modaker tajweed checker",
+    description="Used by the Modaker app. Needs the app's key.",
+    api_name="check",
+    flagging_mode="never",
+)
+
+if __name__ == "__main__":
+    demo.queue(max_size=20).launch()

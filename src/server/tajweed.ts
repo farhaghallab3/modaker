@@ -23,31 +23,54 @@ export async function wakeTajweed(fetchImpl: typeof fetch = fetch): Promise<void
 /** A sleeping free server can take a minute to wake; the screen keeps showing «جارٍ فحص التجويد» meanwhile. */
 const TIMEOUT_MS = 55_000;
 
-export async function checkTajweed(audio: ArrayBuffer, mimeType: string, range: AyahRange, fetchImpl: typeof fetch = fetch): Promise<TajweedResult> {
-  const fd = new FormData();
-  const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : mimeType.includes("wav") ? "wav" : "webm";
-  fd.append("audio", new Blob([audio], { type: mimeType }), `recitation.${ext}`);
-  fd.append("surah", String(range.surah));
-  fd.append("from", String(range.from));
-  fd.append("to", String(range.to));
+function headers(): Record<string, string> {
+  const h: Record<string, string> = { "content-type": "application/json" };
+  // Optional: GPU time is then counted on the Space owner's free quota instead of the anonymous one.
+  const token = env.tajweedHfToken();
+  if (token) h.authorization = `Bearer ${token}`;
+  return h;
+}
 
-  let res: Response;
+/** The `complete` event's data from a Gradio server-sent-events answer (null when it reported an error). */
+export function gradioComplete(stream: string): unknown {
+  let event = "";
+  for (const line of stream.split(/\r?\n/)) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:") && event === "complete") {
+      try {
+        const data = JSON.parse(line.slice(5).trim());
+        return Array.isArray(data) ? data[0] : data;
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Asks the checker (a Gradio Space) in its two steps: start the job, then read its result.
+ * Only the recording (base64), the ayah range and the shared key are sent.
+ */
+export async function checkTajweed(audio: ArrayBuffer, _mimeType: string, range: AyahRange, fetchImpl: typeof fetch = fetch): Promise<TajweedResult> {
+  const base = `${env.tajweedUrl()}/gradio_api/call/check`;
+  const signal = AbortSignal.timeout(TIMEOUT_MS);
+  const data = [Buffer.from(audio).toString("base64"), range.surah, range.from, range.to, env.tajweedKey()];
+
+  let stream: string;
   try {
-    res = await fetchImpl(`${env.tajweedUrl()}/check`, {
-      method: "POST",
-      headers: { "x-modaker-key": env.tajweedKey() },
-      body: fd,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+    const start = await fetchImpl(base, { method: "POST", headers: headers(), body: JSON.stringify({ data }), signal });
+    if (!start.ok) throw new ProviderError("tajweed", `HTTP ${start.status}`, start.status);
+    const { event_id: id } = (await start.json()) as { event_id?: unknown };
+    if (typeof id !== "string" || !/^[\w-]{1,100}$/.test(id)) throw new ProviderError("tajweed", "no event id");
+    const res = await fetchImpl(`${base}/${id}`, { headers: headers(), signal });
+    if (!res.ok) throw new ProviderError("tajweed", `HTTP ${res.status}`, res.status);
+    stream = await res.text();
   } catch (e) {
+    if (e instanceof ProviderError) throw e;
     throw new ProviderError("tajweed", `request failed: ${(e as Error).name}`, undefined, { cause: e });
   }
-  if (!res.ok) throw new ProviderError("tajweed", `HTTP ${res.status}`, res.status);
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    throw new ProviderError("tajweed", "bad JSON");
-  }
-  return parseTajweedResult(body, range);
+  const result = gradioComplete(stream) as { ok?: unknown; error?: unknown } | null;
+  if (!result || result.ok !== true) throw new ProviderError("tajweed", `checker said: ${String(result?.error ?? "error")}`);
+  return parseTajweedResult(result, range);
 }
