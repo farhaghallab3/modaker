@@ -333,3 +333,29 @@ test("toWav adds a 24 kHz mono 16-bit header to raw PCM and leaves WAV untouched
   assert.equal(v.getUint32(40, true), 10);
   assert.equal(toWav(wav), wav);
 });
+
+test("env values pasted with quotes, spaces or a newline still work; GET /status reports yes/no only, never a key", async () => {
+  const { cleanEnvValue } = await import("../src/server/env");
+  assert.equal(cleanEnvValue(' "groq"\n'), "groq");
+  assert.equal(cleanEnvValue("'gm-key'"), "gm-key");
+  assert.equal(cleanEnvValue(undefined), "");
+  const savedStt = { p: process.env.STT_PROVIDER, k: process.env.GROQ_API_KEY };
+  try {
+    process.env.STT_PROVIDER = '"Groq" ';
+    process.env.GROQ_API_KEY = " gsk-secret-value\n";
+    process.env.GEMINI_API_KEY = '"gm-secret-value"';
+    const { GET } = await import("../src/app/api/v1/status/route");
+    const res = await GET(new Request("https://modaker.test/api/v1/status"), undefined);
+    const text = await res.text();
+    const j = JSON.parse(text);
+    assert.equal(j.recitation.provider, "groq");
+    assert.equal(j.recitation.ready, true);
+    assert.equal(j.speech.engine, "gemini");
+    assert.ok(!text.includes("secret-value"));
+  } finally {
+    for (const [k, v] of [["STT_PROVIDER", savedStt.p], ["GROQ_API_KEY", savedStt.k]] as const) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+});

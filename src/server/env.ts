@@ -5,9 +5,17 @@
  * process.env before first use.
  */
 
+/** Pasted dashboard values often carry spaces, a newline or wrapping quotes ("groq"); those are removed. */
+export function cleanEnvValue(v: string | undefined): string {
+  if (v == null) return "";
+  let t = v.trim();
+  if (t.length >= 2 && ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'")))) t = t.slice(1, -1).trim();
+  return t;
+}
+
 function str(name: string, fallback = ""): string {
-  const v = process.env[name];
-  return v == null || v === "" ? fallback : v;
+  const v = cleanEnvValue(process.env[name]);
+  return v === "" ? fallback : v;
 }
 
 function int(name: string, fallback: number): number {
@@ -26,7 +34,7 @@ export const env = {
   tafsirJsonDir: () => str("TAFSIR_JSON_DIR", "data/tafsir"),
   ayahAudioBase: () => str("NEXT_PUBLIC_AYAH_AUDIO_BASE", "https://everyayah.com/data/Alafasy_128kbps").replace(/\/+$/, ""),
 
-  sttProvider: () => str("STT_PROVIDER", "openai") as "openai" | "groq" | "mock",
+  sttProvider: () => str("STT_PROVIDER", "openai").toLowerCase() as "openai" | "groq" | "mock",
   /** Groq's hosted Whisper (OpenAI-compatible API, free tier). Used when STT_PROVIDER=groq. */
   groqApiKey: () => str("GROQ_API_KEY"),
   groqBaseUrl: () => str("GROQ_BASE_URL", "https://api.groq.com/openai/v1").replace(/\/+$/, ""),
