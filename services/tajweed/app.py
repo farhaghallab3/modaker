@@ -23,16 +23,12 @@ import gradio as gr
 import numpy as np
 import spaces
 import torch
-from transformers import AutoFeatureExtractor
 
 from quran_transcript import Aya, alphabet as alph, explain_error, quran_phonetizer
 from quran_transcript.phonetics.moshaf_attributes import MoshafAttributes
 from quran_transcript.phonetics.search import NoPhonemesSearchResult, PhoneticSearch
-from quran_muaalem.decode import phonemes_level_greedy_decode
-from quran_muaalem.modeling.modeling_multi_level_ctc import Wav2Vec2BertForMultilevelCTC
-from quran_muaalem.modeling.multi_level_tokenizer import MultiLevelTokenizer
-
 from logic import SR, WordRef, finalize, notes_from_errors, split_on_silence, word_offsets
+from muaalem_model import greedy_ctc, load_muaalem
 
 MODEL = os.environ.get("MUAALEM_MODEL", "obadx/muaalem-model-v3_2")
 SECRET = os.environ.get("MODAKER_KEY", "")
@@ -52,11 +48,8 @@ MOSHAF = MoshafAttributes(
 # only inside @spaces.GPU calls.
 DEVICE = "cuda" if os.environ.get("SPACES_ZERO_GPU") or torch.cuda.is_available() else "cpu"
 DTYPE = torch.float16 if DEVICE == "cuda" else torch.float32
-model = Wav2Vec2BertForMultilevelCTC.from_pretrained(MODEL)
+model, processor, id_to_token = load_muaalem(MODEL)
 model.to(DEVICE, dtype=DTYPE)
-model.eval()
-processor = AutoFeatureExtractor.from_pretrained(MODEL)
-vocab = MultiLevelTokenizer(MODEL).id_to_vocab["phonemes"]
 search = PhoneticSearch()
 
 
@@ -78,10 +71,11 @@ def _phonemes(pieces: list[np.ndarray]) -> list[str]:
     out = []
     for piece in pieces:
         feats = processor(piece, sampling_rate=SR, return_tensors="pt")
-        feats = {k: v.to(DEVICE, dtype=DTYPE) for k, v in feats.items()}
-        logits = model(**feats, return_dict=False)[0]["phonemes"]
-        probs = torch.nn.functional.softmax(logits.float(), dim=-1).cpu()
-        out.append(phonemes_level_greedy_decode(probs, vocab)[0].text)
+        logits = model(
+            input_features=feats["input_features"].to(DEVICE, dtype=DTYPE),
+            attention_mask=feats["attention_mask"].to(DEVICE) if "attention_mask" in feats else None,
+        )
+        out.append(greedy_ctc(logits[0].argmax(dim=-1).tolist(), id_to_token))
     return out
 
 

@@ -28,7 +28,7 @@ or two to wake it.
 2. New Space → name `modaker-checker` → SDK **Gradio** → template **Blank** → hardware
    **ZeroGPU (free)** → visibility Public (the key below keeps it private to Modaker).
 3. Files → Add file → Upload files: `README.md`, `requirements.txt`, `packages.txt`, `app.py`,
-   `logic.py` from this folder (replace the README that is already there). Commit.
+   `logic.py`, `muaalem_model.py` from this folder (replace the README that is already there). Commit.
 4. Settings → Variables and secrets → New secret: `MODAKER_KEY` = any long random password.
 5. Wait for "Running" (the first build takes about 10 minutes).
 6. Optional but recommended: huggingface.co/settings/tokens → New token (Read). GPU time is then

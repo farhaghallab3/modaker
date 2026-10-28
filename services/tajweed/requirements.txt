@@ -1,5 +1,3 @@
-torch>=2.7.0
-transformers==4.55.4
-quran-muaalem==0.2.2
+transformers==5.17.0
 quran-transcript==0.6.4
 numpy>=2.2.6
