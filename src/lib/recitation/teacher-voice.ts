@@ -1,12 +1,14 @@
 "use client";
 
 /**
- * Plays the teacher's fixed feedback sentences INSTANTLY. Their audio is fetched once while the learner is still
- * reciting (prepareTeacherVoice), kept in the browser's Cache Storage between visits, and played from memory the
- * moment the result arrives. Output only; nothing the learner says is stored.
+ * Plays the teacher's fixed feedback sentences INSTANTLY.
+ *  1. Normally they are static files recorded at build time (public/teacher-voice, scripts/teacher-voice.ts): loaded as
+ *     soon as the recite page opens, served from the CDN, no voice-service call.
+ *  2. Fallback (no recorded files): fetched once from the voice service while the learner recites, kept in Cache Storage.
+ * Output only; nothing the learner says is stored.
  */
 import { api } from "@/lib/api";
-import type { TeacherPhraseKey } from "./coach-feedback";
+import { TEACHER_PHRASES, teacherPhraseHash, type TeacherPhraseKey } from "./coach-feedback";
 
 const CACHE = "modaker-teacher-voice-v1";
 const urls = new Map<string, string>(); // phrase key → object URL
@@ -38,10 +40,33 @@ async function toCache(text: string, blob: Blob) {
   }
 }
 
-/** Fetches (or loads from cache) the audio of every teacher sentence. Safe to call many times. */
+/** Static files recorded at build time. True when every sentence is ready this way. */
+async function loadRecorded(): Promise<boolean> {
+  try {
+    const res = await fetch("/teacher-voice/manifest.json");
+    if (!res.ok) return false;
+    const manifest = (await res.json()) as Record<string, { file: string; hash: string }>;
+    const entries = Object.entries(TEACHER_PHRASES) as [TeacherPhraseKey, string][];
+    if (!entries.every(([k, t]) => manifest[k]?.hash === teacherPhraseHash(t))) return false; // sentences changed since the build
+    await Promise.all(
+      entries.map(async ([k]) => {
+        if (urls.has(k)) return;
+        const r = await fetch(`/teacher-voice/${manifest[k].file}`);
+        if (!r.ok) throw new Error("missing file");
+        urls.set(k, URL.createObjectURL(await r.blob()));
+      }),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Gets the audio of every teacher sentence ready (recorded files first). Safe to call many times. */
 export function prepareTeacherVoice(): Promise<void> {
   if (preparing) return preparing;
   preparing = (async () => {
+    if (await loadRecorded()) return;
     const { phrases } = await api.teacherVoice();
     if (!phrases) return;
     // one after another: keeps well under the voice service's rate limits
@@ -72,7 +97,7 @@ export function stopTeacher() {
 export async function playTeacher(key: TeacherPhraseKey, onEnd?: () => void): Promise<boolean> {
   stopTeacher();
   if (!urls.has(key)) {
-    await Promise.race([prepareTeacherVoice(), new Promise((r) => setTimeout(r, 6000))]);
+    await Promise.race([prepareTeacherVoice(), new Promise((r) => setTimeout(r, 2500))]);
   }
   const url = urls.get(key);
   if (!url) return false;

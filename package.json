@@ -5,6 +5,7 @@
   "description": "مُدّكِر — رفيقك الذكي في رحلة حفظ القرآن",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "tsx scripts/teacher-voice.ts",
     "build": "next build",
     "postinstall": "prisma generate",
     "db:deploy": "prisma migrate deploy",

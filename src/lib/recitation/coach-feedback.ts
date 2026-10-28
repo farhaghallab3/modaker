@@ -18,6 +18,13 @@ export const TEACHER_PHRASES: Record<TeacherPhraseKey, string> = {
   unheard: "لم أسمعك بوضوح. اقترب من الميكروفون، ثم أعد المحاولة.",
 };
 
+/** Short stable fingerprint of a sentence: a recorded file is used only while its sentence is unchanged. */
+export function teacherPhraseHash(text: string): string {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
 type Input = Pick<RecitationAnalysis, "ayahs" | "recognition">;
 
 /** Ayahs the learner should listen to and recite again (confirmed differences only). */

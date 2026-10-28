@@ -32,6 +32,8 @@ const DEV = process.env.NODE_ENV !== "production";
 
 export function ReciteScreen() {
   const search = useSearchParams();
+  // Get the teacher's voice ready as soon as the recite page opens.
+  useEffect(() => void prepareTeacherVoice(), []);
   const surah = Number(search.get("surah"));
   const meta = Number.isInteger(surah) ? getSurahMeta(surah) : undefined;
   const fromQ = Number(search.get("from"));
