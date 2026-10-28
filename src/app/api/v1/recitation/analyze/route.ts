@@ -12,6 +12,8 @@ import { apiError } from "@/server/errors";
 import { enforceRateLimit, json, readJson, route } from "@/server/http";
 import { getQuranProvider } from "@/server/quran/provider";
 import { toDbEnum } from "@/server/user/mappers";
+import { recitationFeedbackText } from "@/lib/recitation/coach-feedback";
+import { speechForText } from "@/server/tts/speech";
 import { MAX_RECITATION_AYAHS, ayahRangeSchema, transcriptSchema } from "@/server/validation";
 import { z } from "zod";
 
@@ -77,5 +79,7 @@ export const POST = route(async (req) => {
     }
   }
 
-  return json(analysis);
+  // The teacher's spoken feedback: fixed sentences with ayah numbers only (never Quran words).
+  const feedbackText = recitationFeedbackText(analysis);
+  return json({ ...analysis, feedbackText, speech: speechForText(feedbackText) ?? undefined });
 });

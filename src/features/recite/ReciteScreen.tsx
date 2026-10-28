@@ -9,6 +9,7 @@ import { SourceLine } from "@/components/quran/QuranVerse";
 import { useAyahAudio } from "@/components/quran/useAyahAudio";
 import { BetaNote, RecitationFeedback, TextOnlyNote } from "@/components/recitation/RecitationFeedback";
 import { RecitationRecorder } from "@/components/recitation/RecitationRecorder";
+import { TeacherVoice } from "@/components/recitation/TeacherVoice";
 import { SelfGradeButtons } from "@/components/review/SelfReview";
 import { useRecitationRecorder } from "@/components/recitation/useRecitationRecorder";
 import { Icon } from "@/components/ui/Icon";
@@ -16,6 +17,7 @@ import { Badge, Button, ButtonLink, cn, EmptyState, ErrorState, Toggle } from "@
 import { FocusActionBar, FocusHeader } from "@/features/focus/FocusHeader";
 import { SOURCE_UNAVAILABLE } from "@/features/quran/states";
 import { api, useOnline, useSurah } from "@/lib/api";
+import { stopSpeech } from "@/lib/assistant/speech-player";
 import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import { analyzeRecitationWithOverrun } from "@/lib/recitation/compare";
 import { MAX_RECITE_AYAHS, clampRange, firstWord, memorizedRanges } from "@/lib/recitation/ranges";
@@ -211,6 +213,7 @@ function ReciteSession({
   }, [stage]);
 
   function retry() {
+    stopSpeech();
     audio.stop();
     setListen(false);
     setAnalysis(null);
@@ -395,6 +398,16 @@ function ReciteSession({
           </div>
         ) : analysis ? (
           <div ref={resultRef} tabIndex={-1} className="py-6 sm:py-8 focus:outline-none" aria-label="نتيجة التسميع">
+            <TeacherVoice
+              key={analysis.transcript.text + analysis.accuracy}
+              analysis={analysis}
+              canListen={(n) => verses.some((v) => v.ayah === n)}
+              onListenAyah={(n) => {
+                const i = verses.findIndex((v) => v.ayah === n);
+                if (i >= 0) audio.playOne(i);
+              }}
+              onRetry={retry}
+            />
             <RecitationFeedback
               analysis={analysis}
               note={

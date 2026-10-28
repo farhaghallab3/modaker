@@ -64,6 +64,15 @@ export function speakableText(answer: Pick<AssistantAnswer, "blocks" | "verses" 
   return truncateForSpeech(cleaned);
 }
 
+/** Signs text the server wrote itself (e.g. recitation feedback sentences), or null when speech is off/unconfigured. */
+export function speechForText(text: string, now = Date.now()): SpeechPayload | null {
+  if (!env.assistantTts() || !ttsEngine()) return null;
+  const key = env.sessionSecret();
+  const t = truncateForSpeech(text.trim());
+  if (!key || t.length < SPEECH_MIN_CHARS) return null;
+  return signSpeech(t, key, now);
+}
+
 // ── signing ──────────────────────────────────────────────────────────────
 
 function mac(text: string, exp: number, key: string): string {
