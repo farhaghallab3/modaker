@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { MushafPage } from "@/lib/quran/mushaf";
 import type { TajweedResult } from "@/lib/recitation/tajweed-notes";
+import type { TeacherScriptResponse } from "@/lib/recitation/teacher-script";
 import type {
   AssistantAnswer,
   AyahRange,
@@ -60,6 +61,13 @@ export const api = {
     fd.append("range", JSON.stringify(range));
     return fetch(`${BASE}/recitation/tajweed`, { method: "POST", body: fd }).then((r) => json<TajweedResult>(r));
   },
+  /** What the teacher says after a recitation (the server redoes the word check from the verified text). */
+  teacher: (body: { range: AyahRange; transcript: Transcript; tajweed?: TajweedResult; said?: string }) =>
+    fetch(`${BASE}/recitation/teacher`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => json<TeacherScriptResponse>(r)),
   /** The server loads the expected verses itself; the client only sends the range. */
   analyze: (range: AyahRange, transcript: Transcript) =>
     fetch(`${BASE}/recitation/analyze`, {

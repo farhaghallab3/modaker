@@ -3,7 +3,7 @@
 Runs as a free Hugging Face Space (Gradio SDK, ZeroGPU). Modaker calls its API:
   POST /gradio_api/call/check  {"data": [audio_base64, surah, from, to, key]}  → {"event_id": ...}
   GET  /gradio_api/call/check/<event_id>  → server-sent events; "complete" carries [result]
-  result = {"ok": true, "notes": [...], "pieces": n, "matched": m, "seconds": s}  or  {"ok": false, "error": ...}
+  result = {"ok": true, "notes": [...], "good": [...], "heardAyahs": [...], "pieces": n, "matched": m, "seconds": s}  or  {"ok": false, "error": ...}
 
 The model (obadx/muaalem-model-v3_2, MIT) hears the recitation as phonemes; quran_transcript
 builds the correct phonemes for the same words (Hafs) and explains the differences.
@@ -27,7 +27,7 @@ import torch
 from quran_transcript import Aya, alphabet as alph, explain_error, quran_phonetizer
 from quran_transcript.phonetics.moshaf_attributes import MoshafAttributes
 from quran_transcript.phonetics.search import NoPhonemesSearchResult, PhoneticSearch
-from logic import SR, WordRef, finalize, join_references, notes_from_errors, split_on_silence, word_offsets
+from logic import MAX_GOOD, SR, WordRef, finalize, good_from_mappings, join_references, notes_from_errors, split_on_silence, word_offsets
 from muaalem_model import greedy_ctc, load_muaalem
 
 MODEL = os.environ.get("MUAALEM_MODEL", "obadx/muaalem-model-v3_2")
@@ -135,6 +135,17 @@ def _reference(words: list[str], refs: list[WordRef], stop: bool) -> tuple[str, 
     return join_references(built, space)
 
 
+def _unique_good(good: list[dict], notes: list[dict]) -> list[dict]:
+    noted = {(n["ayah"], n["word"]) for n in notes}
+    out, seen = [], set()
+    for g in good:
+        k = (g["ayah"], g["word"])
+        if k not in noted and k not in seen:
+            seen.add(k)
+            out.append(g)
+    return out[:MAX_GOOD]
+
+
 def check(audio_b64: str, surah: float, from_: float, to: float, key: str) -> dict:
     if not SECRET or not hmac.compare_digest(str(key or ""), SECRET):
         return {"ok": False, "error": "unauthorized"}
@@ -165,6 +176,8 @@ def check(audio_b64: str, surah: float, from_: float, to: float, key: str) -> di
     del wave
 
     notes: list[dict] = []
+    good: list[dict] = []
+    heard_ayahs: set[int] = set()
     matched = 0
     space = alph.uthmani.space
     for ph in phonemes:
@@ -177,6 +190,7 @@ def check(audio_b64: str, surah: float, from_: float, to: float, key: str) -> di
         if not words:
             continue
         matched += 1
+        heard_ayahs.update(range(r.start.aya_idx, r.end.aya_idx + 1))
         offsets_of = lambda text_words: word_offsets(text_words, len(space))  # noqa: E731
         # Readers usually stop at the end of each ayah (then the last vowel drops and the next ayah starts
         # with a hamza); some join ayahs. Build both readings and keep the one closer to what was heard.
@@ -186,9 +200,12 @@ def check(audio_b64: str, surah: float, from_: float, to: float, key: str) -> di
             errors = explain_error(uthmani_text=text, ref_ph_text=ref_ph, predicted_ph_text=ph, mappings=mappings)
             found = notes_from_errors(errors, refs, offsets_of(words), text)
             if best is None or len(found) < len(best[1]):
-                best = (mode, found, ref_ph, errors)
-        mode, found, ref_ph, errors = best
+                best = (mode, found, ref_ph, errors, mappings, text)
+        mode, found, ref_ph, errors, mappings, text = best
         notes.extend(found)
+        noted = {(n["ayah"], n["word"]) for n in found}
+        if len(mappings) == len(text):  # one mapping per Uthmani character, so positions are words
+            good.extend(good_from_mappings(mappings, refs, offsets_of(words), noted))
         if DEBUG:
             # Phoneme strings only (no audio): lets us see why a note was given.
             print(f"[check] {surah}:{r.start.aya_idx}-{r.end.aya_idx} ({mode})\n  expected: {ref_ph}\n  heard:    {ph}", flush=True)
@@ -202,6 +219,10 @@ def check(audio_b64: str, surah: float, from_: float, to: float, key: str) -> di
         "matched": matched,
         "seconds": round(time.time() - t0, 1),
         "notes": finalize(notes),
+        # What was read well (tajweed rules in words without a note), for the teacher's praise.
+        "good": _unique_good(good, notes),
+        # Ayahs the checker placed some of the recording in (even when the word check missed them).
+        "heardAyahs": sorted(heard_ayahs),
     }
 
 

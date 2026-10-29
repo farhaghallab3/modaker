@@ -10,7 +10,9 @@ import { useAyahAudio } from "@/components/quran/useAyahAudio";
 import { BetaNote, RecitationFeedback, TextOnlyNote } from "@/components/recitation/RecitationFeedback";
 import { RecitationRecorder } from "@/components/recitation/RecitationRecorder";
 import { TajweedNotes, noteId, type TajweedState } from "@/components/recitation/TajweedNotes";
-import { TeacherVoice, type TeacherFollowUp } from "@/components/recitation/TeacherVoice";
+import { TeacherVoice, type TeacherFollowUp, type TeacherItem, type TeacherScriptState } from "@/components/recitation/TeacherVoice";
+import { teacherFeedback } from "@/lib/recitation/coach-feedback";
+import type { TeacherSegmentOut } from "@/lib/recitation/teacher-script";
 import { SelfGradeButtons } from "@/components/review/SelfReview";
 import { useRecitationRecorder } from "@/components/recitation/useRecitationRecorder";
 import { Icon } from "@/components/ui/Icon";
@@ -19,8 +21,8 @@ import { FocusActionBar, FocusHeader } from "@/features/focus/FocusHeader";
 import { SOURCE_UNAVAILABLE } from "@/features/quran/states";
 import { api, useOnline, useSurah } from "@/lib/api";
 import { forgetTajweedCheck, prepareTajweedCheck, takeTajweedCheck } from "@/lib/recitation/tajweed-check";
-import { loadSpokenText, prepareTeacherVoice, stopTeacher } from "@/lib/recitation/teacher-voice";
-import { SPOKEN_NOTES, noteWord, type TajweedNote } from "@/lib/recitation/tajweed-notes";
+import { loadSpokenText, playClip, prepareTeacherVoice, stopTeacher } from "@/lib/recitation/teacher-voice";
+import { SPOKEN_NOTES, noteWord, type TajweedNote, type TajweedResult } from "@/lib/recitation/tajweed-notes";
 import { wordAudioUrl } from "@/lib/quran/word-audio";
 import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import { analyzeRecitationWithOverrun } from "@/lib/recitation/compare";
@@ -198,6 +200,38 @@ function ReciteSession({
     if (!speech || speech.length !== Math.min(notes.length, SPOKEN_NOTES)) return { phrase: "tajweedFix" };
     return { talk: speech.map((p, i) => ({ id: noteId(notes[i]), clip: loadSpokenText(p), wordUrl: wordUrl(notes[i]) })) };
   }, [tajweed, wordUrl]);
+  // «الشيخ المعلّم»: the full script, asked once the tajweed check has answered (or after 25 s without it).
+  const [teacher, setTeacher] = useState<TeacherScriptState | null>(null);
+  const [tajweedWaitOver, setTajweedWaitOver] = useState(false);
+  const teacherFor = useRef<RecitationAnalysis | null>(null);
+  const teacherRun = useRef(0);
+  useEffect(() => {
+    setTajweedWaitOver(false);
+    if (!analysis) return;
+    const t = setTimeout(() => setTajweedWaitOver(true), 25_000);
+    return () => clearTimeout(t);
+  }, [analysis]);
+  useEffect(() => {
+    const t = lastTranscript.current;
+    if (!analysis || analysis.recognition !== "good" || analyzedOnDevice || !t || teacherFor.current === analysis) return;
+    const settled = !tajweed || tajweed.state !== "checking" || tajweedWaitOver;
+    if (!settled) {
+      setTeacher((s) => (s?.state === "waiting" ? s : { state: "waiting" }));
+      return;
+    }
+    teacherFor.current = analysis;
+    const run = ++teacherRun.current;
+    const tj = tajweed?.state === "done" ? tajweed.result : undefined;
+    setTeacher((s) => (s?.state === "waiting" ? s : { state: "waiting" }));
+    api
+      .teacher({ range, transcript: t, tajweed: tj, said: teacherFeedback(analysis).key })
+      .then((r) => {
+        if (run !== teacherRun.current) return;
+        setTeacher(r.segments.length ? { state: "ready", items: teacherItems(r.segments, analysis, tj, range.surah, versesRef.current) } : { state: "failed" });
+      })
+      .catch(() => run === teacherRun.current && setTeacher({ state: "failed" }));
+  }, [analysis, analyzedOnDevice, tajweed, tajweedWaitOver, range]);
+
   const resultRef = useRef<HTMLDivElement>(null);
   const versesRef = useRef(verses);
   versesRef.current = verses;
@@ -259,6 +293,9 @@ function ReciteSession({
     tajweedRun.current++;
     setTajweed(null);
     setSpeakingId(null);
+    teacherRun.current++;
+    teacherFor.current = null;
+    setTeacher(null);
     audio.stop();
     setListen(false);
     setAnalysis(null);
@@ -453,6 +490,7 @@ function ReciteSession({
               }}
               onRetry={retry}
               followUp={followUp}
+              script={teacher}
               onSpeaking={setSpeakingId}
             />
             {tajweed && analysis.recognition === "good" ? (
@@ -471,6 +509,11 @@ function ReciteSession({
             ) : null}
             <RecitationFeedback
               analysis={analysis}
+              speakingId={speakingId}
+              onHearWord={(ayah, word) => {
+                stopTeacher();
+                void playClip(wordAudioUrl(range.surah, ayah, word));
+              }}
               note={
                 analyzedOnDevice ? (
                   <p className="text-xs text-muted">تمت المطابقة على جهازك لتعذّر الوصول إلى الخادم، باستخدام النص الموثّق نفسه.</p>
@@ -594,4 +637,23 @@ function SelfAssessPrompt({ analysis }: { analysis: RecitationAnalysis }) {
       <SelfGradeButtons ranges={ranges} className="mt-3" />
     </section>
   );
+}
+
+/**
+ * The teacher's script as playable steps: each sentence starts loading its voice now; each word is played from the
+ * word-by-word audio only when Modaker's text places it for sure (a tajweed note's word must agree with the checker's
+ * word count for that ayah).
+ */
+function teacherItems(segments: TeacherSegmentOut[], analysis: RecitationAnalysis, tajweed: TajweedResult | undefined, surah: number, verses: { ayah: number; audioUrl?: string }[]): TeacherItem[] {
+  return segments.map((s): TeacherItem => {
+    if ("say" in s) return { kind: "say", text: s.say, clip: s.speech ? loadSpokenText(s.speech) : Promise.resolve(null) };
+    if ("word" in s) {
+      const { ayah, word } = s.word;
+      const words = analysis.ayahs.find((a) => a.ayah === ayah)?.words.length ?? 0;
+      const fromChecker = [...(tajweed?.notes ?? []), ...(tajweed?.good ?? [])].find((n) => n.ayah === ayah && n.word === word);
+      const placed = word < words && (!fromChecker || fromChecker.wordsInAyah === words);
+      return { kind: "word", id: `${ayah}:${word}`, url: placed ? wordAudioUrl(surah, ayah, word) : null };
+    }
+    return { kind: "ayah", url: verses.find((v) => v.ayah === s.ayah)?.audioUrl ?? null };
+  });
 }

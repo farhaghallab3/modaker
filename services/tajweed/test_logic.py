@@ -5,7 +5,7 @@ from types import SimpleNamespace as NS
 
 import numpy as np
 
-from logic import SR, WordRef, classify, finalize, notes_from_errors, split_on_silence, word_at, word_offsets
+from logic import SR, WordRef, classify, finalize, good_from_mappings, notes_from_errors, split_on_silence, word_at, word_offsets
 
 
 class NormalMaddRule:  # same class names as quran_transcript's rules
@@ -104,6 +104,17 @@ class Words(unittest.TestCase):
         mid = err("tashkeel", op="delete", e_ph="\u0633\u064e", p_ph="\u0633")  # vowel dropped mid-word
         mid.uthmani_pos = (5, 7)
         self.assertEqual(notes_from_errors([mid], refs, offs, text)[0]["letter"], "\u0633")
+
+    def test_good_lists_rules_read_well_one_per_word(self):
+        class GhonnahRule:
+            pass
+        GhonnahRule.__name__ = "Ghonnah"
+        m = lambda rules=None, deleted=False: NS(tajweed_rules=rules, deleted=deleted)  # noqa: E731
+        # words "ab" "cd" "ef": madd in word 0, ghunnah + madd in word 1, a madd in word 2 that got a note
+        mappings = [m([NormalMaddRule()]), m(), m(deleted=True), m([GhonnahRule()]), m([NormalMaddRule()]), m(), m(), m([LazemMaddRule()])]
+        refs = [WordRef(1, 0, 3), WordRef(1, 1, 3), WordRef(1, 2, 3)]
+        good = good_from_mappings(mappings, refs, word_offsets(["ab", "cd", "ef"]), noted={(1, 2)})
+        self.assertEqual([(g["word"], g["rule"]) for g in good], [(1, "ghunnah"), (0, "madd_tabii")])
 
     def test_finalize_caps_keeping_letters(self):
         notes = [{"ayah": 1, "word": i, "kind": "tajweed"} for i in range(20)] + [{"ayah": 2, "word": 0, "kind": "letters"}]

@@ -307,6 +307,37 @@ def notes_from_errors(errors: Iterable[Any], refs: list[WordRef], offsets: list[
     return list(best.values())
 
 
+# Rules worth praising when read well, most notable first.
+GOOD_ORDER = ["madd_lazem", "madd_mottasel", "madd_monfasel", "ghunnah", "qalqalah", "idgham", "madd_aared", "madd_leen", "madd_tabii"]
+MAX_GOOD = 6
+
+
+def good_from_mappings(mappings: list, refs: list[WordRef], offsets: list[int], noted: set) -> list[dict]:
+    """Tajweed rules inside the words that were heard and got no note: what the reader did well.
+    One per word (the most notable rule), at most MAX_GOOD, most notable first."""
+    best: dict[tuple[int, int], str] = {}
+    for pos, m in enumerate(mappings):
+        rules = getattr(m, "tajweed_rules", None) or []
+        if getattr(m, "deleted", False) or not rules or not refs:
+            continue
+        ref = refs[word_at(pos, offsets)]
+        k = (ref.ayah, ref.word)
+        if k in noted:
+            continue
+        for rule in rules:
+            key, _ = _rule_info(rule)
+            if key in GOOD_ORDER and (k not in best or GOOD_ORDER.index(key) < GOOD_ORDER.index(best[k])):
+                best[k] = key
+    items = [{"ayah": a, "word": w, "wordsInAyah": next(r.words_in_ayah for r in refs if r.ayah == a), "rule": key} for (a, w), key in best.items()]
+    items.sort(key=lambda g: (GOOD_ORDER.index(g["rule"]), g["ayah"], g["word"]))
+    # One of each rule first, so the praise is varied.
+    seen, first, rest = set(), [], []
+    for g in items:
+        (rest if g["rule"] in seen else first).append(g)
+        seen.add(g["rule"])
+    return (first + rest)[:MAX_GOOD]
+
+
 def finalize(notes: Iterable[dict], limit: int = MAX_NOTES) -> list[dict]:
     """Merge notes from all pieces: one per word, ordered by position, capped."""
     best: dict[tuple[int, int], dict] = {}

@@ -79,7 +79,7 @@ test("parse keeps only well-formed notes inside the requested ayahs, in reading 
       [5, 0, "tajweed"],
     ],
   );
-  assert.deepEqual(parseTajweedResult(null, range), { notes: [], matched: 0 });
+  assert.deepEqual(parseTajweedResult(null, range), { notes: [], matched: 0, good: [], heardAyahs: [] });
   assert.equal(parseTajweedResult({ notes: Array.from({ length: 30 }, (_, i) => note({ word: i % 4 })) }, range).notes.length, 12);
 });
 

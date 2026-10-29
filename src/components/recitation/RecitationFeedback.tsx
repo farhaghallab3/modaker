@@ -52,8 +52,14 @@ export function RecitationFeedback({
   analysis,
   actions,
   note,
+  onHearWord,
+  speakingId = null,
 }: {
   analysis: RecitationAnalysis;
+  /** Plays a word alone from a human reciter (words to fix get a small ▶). */
+  onHearWord?: (ayah: number, word: number) => void;
+  /** "<ayah>:<word>" the teacher is talking about now (highlighted). */
+  speakingId?: string | null;
   /** action bar (save / retry / listen) rendered by the screen */
   actions?: ReactNode;
   /** small extra line under the summary (e.g. "حُللت على جهازك") */
@@ -191,7 +197,7 @@ export function RecitationFeedback({
       <ol className="space-y-3">
         {shown.map((a, i) => (
           <li key={a.key} className="animate-rise" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
-            <AyahResult result={a} />
+            <AyahResult result={a} onHearWord={onHearWord} speakingId={speakingId} />
           </li>
         ))}
       </ol>
@@ -230,7 +236,15 @@ function HeardPanel({ analysis }: { analysis: RecitationAnalysis }) {
   );
 }
 
-function AyahResult({ result }: { result: AyahRecitationResult }) {
+function AyahResult({
+  result,
+  onHearWord,
+  speakingId,
+}: {
+  result: AyahRecitationResult;
+  onHearWord?: (ayah: number, word: number) => void;
+  speakingId?: string | null;
+}) {
   const n = toArabicDigits(result.ayah);
   const hesitationAt = useMemo(() => {
     const m = new Map<number, number>();
@@ -273,7 +287,20 @@ function AyahResult({ result }: { result: AyahRecitationResult }) {
                 <span className="sr-only">توقف طويل</span>
               </span>
             ) : null}
-            <Word word={w} />
+            <span className={cn("rounded-lg transition-colors", speakingId === `${result.ayah}:${i}` && "bg-olive-100 ring-2 ring-olive/50")}>
+              <Word word={w} />
+            </span>
+            {onHearWord && w.state !== "ok" ? (
+              <button
+                type="button"
+                onClick={() => onHearWord(result.ayah, i)}
+                aria-label={`اسمع «${w.text}» من الشيخ`}
+                title="اسمعها من الشيخ"
+                className="mx-0.5 inline-flex size-6 items-center justify-center rounded-full bg-olive-100 align-middle font-sans text-olive hover:bg-olive/20"
+              >
+                <Icon name="play" size={12} />
+              </button>
+            ) : null}
             {i < result.words.length - 1 ? " " : null}
           </span>
         ))}

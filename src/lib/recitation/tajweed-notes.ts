@@ -39,8 +39,20 @@ export interface TajweedNote {
   heard: string;
 }
 
+/** A tajweed rule in a word that was heard and got no note: something the reader did well. */
+export interface TajweedGood {
+  ayah: number;
+  word: number;
+  wordsInAyah: number;
+  rule: TajweedRuleKey;
+}
+
 export interface TajweedResult {
   notes: TajweedNote[];
+  /** What was read well (for the teacher's praise). */
+  good: TajweedGood[];
+  /** Ayahs the checker heard at least part of (even when the word check missed them). */
+  heardAyahs: number[];
   /** Pieces of the recording the checker could place inside the requested ayahs. 0 → nothing was judged. */
   matched: number;
   /** Signed sentences for the teacher's voice, one per spoken note (see tajweedSpeech). Absent or null: no voice. */
@@ -56,7 +68,17 @@ const arabicBit = (v: unknown, max: number) => (typeof v === "string" && v.lengt
 
 /** Keeps only well-formed notes inside the requested ayahs (the checker is an outside service). */
 export function parseTajweedResult(raw: unknown, range: { from: number; to: number }, max = 12): TajweedResult {
-  const r = (raw ?? {}) as { notes?: unknown; matched?: unknown };
+  const r = (raw ?? {}) as { notes?: unknown; matched?: unknown; good?: unknown; heardAyahs?: unknown };
+  const inRange = (a: unknown): a is number => Number.isInteger(a) && (a as number) >= range.from && (a as number) <= range.to;
+  const good: TajweedGood[] = [];
+  for (const g of Array.isArray(r.good) ? r.good.slice(0, 6) : []) {
+    const x = g as Record<string, unknown>;
+    const word = x.word, words = x.wordsInAyah;
+    if (!inRange(x.ayah) || !Number.isInteger(word) || !Number.isInteger(words) || (word as number) < 0 || (word as number) >= (words as number) || (words as number) > 200) continue;
+    if (typeof x.rule !== "string" || !Object.hasOwn(TAJWEED_RULES, x.rule)) continue;
+    good.push({ ayah: x.ayah, word: word as number, wordsInAyah: words as number, rule: x.rule as TajweedRuleKey });
+  }
+  const heardAyahs = [...new Set(Array.isArray(r.heardAyahs) ? r.heardAyahs.filter(inRange) : [])].sort((a, b) => a - b);
   const notes: TajweedNote[] = [];
   for (const n of Array.isArray(r.notes) ? r.notes : []) {
     const x = n as Record<string, unknown>;
@@ -85,7 +107,7 @@ export function parseTajweedResult(raw: unknown, range: { from: number; to: numb
   }
   notes.sort((a, b) => a.ayah - b.ayah || a.word - b.word);
   const matched = Number.isInteger(r.matched) && (r.matched as number) >= 0 ? (r.matched as number) : 0;
-  return { notes, matched };
+  return { notes, matched, good, heardAyahs };
 }
 
 function counts(n: number): string {

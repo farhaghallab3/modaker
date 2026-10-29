@@ -18,7 +18,8 @@ export type TeacherPhraseKey =
   | "tajweedOk"
   | "tajweedIntro"
   | "hearSheikh"
-  | "tajweedEnd";
+  | "tajweedEnd"
+  | "teacherWait";
 
 export const TEACHER_PHRASES: Record<TeacherPhraseKey, string> = {
   perfect: "ما شاء الله، أحسنت! حفظك صحيح.",
@@ -34,6 +35,8 @@ export const TEACHER_PHRASES: Record<TeacherPhraseKey, string> = {
   tajweedIntro: "وعندي لك ملاحظات صغيرة في التجويد، اسمعها معي.",
   hearSheikh: "اسمعها من الشيخ.",
   tajweedEnd: "أعد هذه الكلمات الآن بتأنٍّ، وأنت على خير إن شاء الله.",
+  // While the teacher is still listening closely (the tajweed check and the detailed feedback take a few seconds).
+  teacherWait: "لحظة، أستمع إلى تلاوتك جيدًا.",
 };
 
 /** Short stable fingerprint of a sentence: a recorded file is used only while its sentence is unchanged. */
