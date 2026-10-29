@@ -184,7 +184,7 @@ def check(audio_b64: str, surah: float, from_: float, to: float, key: str) -> di
         for mode in ("stop", "joined"):
             text, ref_ph, mappings = _reference(words, refs, stop=(mode == "stop"))
             errors = explain_error(uthmani_text=text, ref_ph_text=ref_ph, predicted_ph_text=ph, mappings=mappings)
-            found = notes_from_errors(errors, refs, offsets_of(words))
+            found = notes_from_errors(errors, refs, offsets_of(words), text)
             if best is None or len(found) < len(best[1]):
                 best = (mode, found, ref_ph, errors)
         mode, found, ref_ph, errors = best

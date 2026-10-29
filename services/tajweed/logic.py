@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import unicodedata
 from typing import Any, Iterable, Optional
 
 import numpy as np
@@ -30,6 +31,11 @@ MADD_RULES = {
     "MoshaddadOrModghamNoonRule": "ghunnah",
 }
 OTHER_RULES = {"Qalqalah": "qalqalah", "Ghonnah": "ghunnah", "IdghamKamel": "idgham"}
+
+# The three short vowels in the phonetic script (fatha, damma, kasra).
+HARAKAT = "\u064e\u064f\u0650"
+# Phoneme strings sent back with a note are cut to this length (a few letters around the mistake, never a whole word list).
+PH_MAX = 8
 
 # Most important first: a wrong letter matters more than a short madd.
 KIND_ORDER = {"letters": 0, "harakat": 1, "tajweed": 2}
@@ -193,8 +199,11 @@ def _squeeze(s: str) -> str:
     return "".join(out)
 
 
-def classify(err: Any) -> Optional[dict]:
-    """One ReciterError → {kind, op, rule, expectedLen, heardLen} or None (not worth a note)."""
+def classify(err: Any, at_word_end: bool = False) -> Optional[dict]:
+    """One ReciterError → {kind, op, rule, expectedLen, heardLen} or None (not worth a note).
+
+    at_word_end: the mistake is on the last letter of a word. A reader may stop on any word, and a stop
+    makes its last letter silent (sakin), so a missing last vowel there is not a mistake."""
     etype = getattr(err, "error_type", "")
     op = getattr(err, "speech_error_type", "replace")
     if etype == "normal":
@@ -205,6 +214,8 @@ def classify(err: Any) -> Optional[dict]:
     if etype == "tashkeel":
         # Same vowels, only held longer or shorter: timing, not a wrong haraka.
         if _squeeze(getattr(err, "expected_ph", "")) == _squeeze(getattr(err, "preditected_ph", "")):
+            return None
+        if at_word_end and not any(h in (getattr(err, "preditected_ph", "") or "") for h in HARAKAT):
             return None
         return {"kind": "harakat", "op": op, "rule": None, "expectedLen": None, "heardLen": None}
     if etype != "tajweed":
@@ -236,18 +247,60 @@ def classify(err: Any) -> Optional[dict]:
     return None
 
 
-def notes_from_errors(errors: Iterable[Any], refs: list[WordRef], offsets: list[int]) -> list[dict]:
-    """Errors from one piece → notes keyed by (ayah, word), at most one per word."""
+def _is_letter(ch: str) -> bool:
+    return unicodedata.category(ch) == "Lo"
+
+
+def _word_end(i: int, offsets: list[int], text: str) -> int:
+    """End (exclusive) of word i in the joined text, without the space after it."""
+    end = offsets[i + 1] if i + 1 < len(offsets) else len(text)
+    while end > offsets[i] and not _is_letter(text[end - 1]) and unicodedata.category(text[end - 1]).startswith("Z"):
+        end -= 1
+    return end
+
+
+def _letter_at(text: str, start: int, end: int, word_start: int) -> str:
+    """The Uthmani letter a mistake sits on: the first letter in its span, else the nearest one before it."""
+    for ch in text[start:end]:
+        if _is_letter(ch):
+            return ch
+    for k in range(min(start, len(text)) - 1, word_start - 1, -1):
+        if _is_letter(text[k]):
+            return text[k]
+    return ""
+
+
+def notes_from_errors(errors: Iterable[Any], refs: list[WordRef], offsets: list[int], text: Optional[str] = None) -> list[dict]:
+    """Errors from one piece → notes keyed by (ayah, word), at most one per word.
+
+    With the joined Uthmani text, each note also says which letter it is about and what was expected and heard
+    (a few phonemes), so the app can give a specific reason."""
     best: dict[tuple[int, int], dict] = {}
     for err in errors:
-        c = classify(err)
+        span = getattr(err, "uthmani_pos", (0, 0))
+        pos, pos_end = int(span[0]), int(span[1])
+        i = word_at(pos, offsets) if refs else None
+        if i is None:
+            continue
+        ref = refs[i]
+        at_end = False
+        letter = ""
+        if text is not None:
+            w_end = _word_end(i, offsets, text)
+            at_end = not any(_is_letter(ch) for ch in text[pos_end:w_end])
+            letter = _letter_at(text, pos, pos_end, offsets[i])
+        c = classify(err, at_word_end=at_end)
         if c is None:
             continue
-        pos = getattr(err, "uthmani_pos", (0, 0))[0]
-        ref = refs[word_at(int(pos), offsets)] if refs else None
-        if ref is None:
-            continue
-        note = {"ayah": ref.ayah, "word": ref.word, "wordsInAyah": ref.words_in_ayah, **c}
+        note = {
+            "ayah": ref.ayah,
+            "word": ref.word,
+            "wordsInAyah": ref.words_in_ayah,
+            **c,
+            "letter": letter,
+            "expected": (getattr(err, "expected_ph", "") or "")[:PH_MAX],
+            "heard": (getattr(err, "preditected_ph", "") or "")[:PH_MAX],
+        }
         k = (ref.ayah, ref.word)
         if k not in best or KIND_ORDER[note["kind"]] < KIND_ORDER[best[k]["kind"]]:
             best[k] = note

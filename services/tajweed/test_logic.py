@@ -79,6 +79,32 @@ class Words(unittest.TestCase):
         by = {(n["ayah"], n["word"]): n["kind"] for n in notes}
         self.assertEqual(by, {(1, 1): "letters", (2, 0): "harakat"})
 
+    def test_note_names_its_letter_and_sounds(self):
+        # synthetic Arabic letters, not Quran text: words "دَبْ" and "سَمِ"
+        words = ["\u062f\u064e\u0628\u0652", "\u0633\u064e\u0645\u0650"]
+        text = " ".join(words)
+        offs = word_offsets(words)
+        refs = [WordRef(1, 0, 2), WordRef(1, 1, 2)]
+        e = err("tashkeel", pos=0, e_ph="\u062f\u064f", p_ph="\u062f\u064e")  # damma expected, fatha heard
+        e.uthmani_pos = (0, 2)
+        (n,) = notes_from_errors([e], refs, offs, text)
+        self.assertEqual((n["letter"], n["expected"], n["heard"]), ("\u062f", "\u062f\u064f", "\u062f\u064e"))
+
+    def test_stop_on_last_letter_is_allowed(self):
+        words = ["\u062f\u064e\u0628\u0652", "\u0633\u064e\u0645\u0650"]
+        text = " ".join(words)
+        offs = word_offsets(words)
+        refs = [WordRef(1, 0, 2), WordRef(1, 1, 2)]
+        last = err("tashkeel", op="delete", e_ph="\u0645\u0650", p_ph="\u0645")  # last vowel dropped: a stop
+        last.uthmani_pos = (7, 9)
+        self.assertEqual(notes_from_errors([last], refs, offs, text), [])
+        wrong = err("tashkeel", e_ph="\u0645\u0650", p_ph="\u0645\u064e")  # a different vowel is still a mistake
+        wrong.uthmani_pos = (7, 9)
+        self.assertEqual(len(notes_from_errors([wrong], refs, offs, text)), 1)
+        mid = err("tashkeel", op="delete", e_ph="\u0633\u064e", p_ph="\u0633")  # vowel dropped mid-word
+        mid.uthmani_pos = (5, 7)
+        self.assertEqual(notes_from_errors([mid], refs, offs, text)[0]["letter"], "\u0633")
+
     def test_finalize_caps_keeping_letters(self):
         notes = [{"ayah": 1, "word": i, "kind": "tajweed"} for i in range(20)] + [{"ayah": 2, "word": 0, "kind": "letters"}]
         out = finalize(notes, limit=5)

@@ -3,7 +3,10 @@
 import { Icon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/primitives";
 import { toArabicDigits } from "@/lib/quran/surahs";
-import { TAJWEED_KIND_LABEL, noteWord, tajweedNoteText, type TajweedResult } from "@/lib/recitation/tajweed-notes";
+import { TAJWEED_KIND_LABEL, noteWord, tajweedNoteText, type TajweedNote, type TajweedResult } from "@/lib/recitation/tajweed-notes";
+import { playClip, stopTeacher } from "@/lib/recitation/teacher-voice";
+
+export const noteId = (n: Pick<TajweedNote, "ayah" | "word">) => `${n.ayah}:${n.word}`;
 
 export type TajweedState = { state: "checking" } | { state: "done"; result: TajweedResult } | { state: "failed" };
 
@@ -11,17 +14,23 @@ export type TajweedState = { state: "checking" } | { state: "done"; result: Tajw
  * «ملاحظات التجويد»: word by word, where the letters, harakat or tajweed differ from the correct Hafs reading,
  * as heard by the open Quran Muaalem model. Hints, not a ruling: the learner's sheikh has the final word.
  * The word itself comes from Modaker's verified text; the sentences are fixed (tajweed-notes.ts).
+ * Each word can be heard alone from a human reciter; the note the teacher is talking about is highlighted.
  */
 export function TajweedNotes({
   tajweed,
   ayahText,
   canListen,
   onListenAyah,
+  wordUrl,
+  speakingId = null,
 }: {
   tajweed: TajweedState;
   ayahText: (ayah: number) => string | undefined;
   canListen: (ayah: number) => boolean;
   onListenAyah: (ayah: number) => void;
+  /** The word alone in a reciter's voice (null when it cannot be placed safely). */
+  wordUrl: (n: TajweedNote) => string | null;
+  speakingId?: string | null;
 }) {
   const result = tajweed.state === "done" ? tajweed.result : null;
   const listenFor = result ? [...new Set(result.notes.map((n) => n.ayah))].filter(canListen).slice(0, 3) : [];
@@ -50,8 +59,14 @@ export function TajweedNotes({
           <ul className="mt-1 space-y-3">
             {result.notes.map((n) => {
               const word = noteWord(n, ayahText(n.ayah));
+              const url = word ? wordUrl(n) : null;
+              const now = speakingId === noteId(n);
               return (
-                <li key={`${n.ayah}:${n.word}`} className="rounded-xl bg-parchment px-3 py-2">
+                <li
+                  key={noteId(n)}
+                  aria-current={now || undefined}
+                  className={`rounded-xl px-3 py-2 transition-colors ${now ? "bg-olive-100 ring-2 ring-olive/60" : "bg-parchment"}`}
+                >
                   <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
                     <span className="font-semibold text-forest">الآية {toArabicDigits(n.ayah)}</span>
                     {word ? (
@@ -62,6 +77,19 @@ export function TajweedNotes({
                     <span className="rounded-full bg-olive-100 px-2 text-[0.7rem] text-olive">{TAJWEED_KIND_LABEL[n.kind]}</span>
                   </p>
                   <p className="mt-1 text-sm leading-7 text-ink/85">{tajweedNoteText(n)}</p>
+                  {url ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        stopTeacher();
+                        void playClip(url);
+                      }}
+                      className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-paper px-3 py-1 text-xs font-semibold text-forest ring-1 ring-line hover:bg-olive-100"
+                    >
+                      <Icon name="play" size={13} />
+                      اسمع الكلمة من الشيخ
+                    </button>
+                  ) : null}
                 </li>
               );
             })}
