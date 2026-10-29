@@ -51,12 +51,13 @@ export const HIGH_WORD_CONFIDENCE = 0.85;
 export const MIN_MATCHED_SHARE = 0.4;
 
 /**
- * Only transcripts from the server recognizer we have measured on real recordings (whisper-1: it kept a
- * deliberate wrong word where the GPT-4o family silently corrected it) may change learning state. Anything
- * else — on-device speech whose behaviour we cannot inspect, simulations, other models — is practice only.
+ * Only transcripts from a server Whisper model may change learning state: OpenAI's whisper-1 (measured on real
+ * recordings: it kept a deliberate wrong word where the GPT-4o family silently corrected it) and the same open
+ * Whisper family on Groq's free tier (whisper-large-v3), which the app uses when it runs on free keys. Anything
+ * else — on-device speech whose behaviour we cannot inspect, simulations, non-Whisper models — is practice only.
  */
 export function isLearningEligible(t: Pick<Transcript, "provider">): boolean {
-  return /^openai:whisper/.test(t.provider);
+  return /^(openai|groq):whisper/.test(t.provider);
 }
 
 export interface ExpTok {

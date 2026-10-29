@@ -34,7 +34,8 @@ test("a clean recitation from the validated server recognizer counts", () => {
 
 test("only the validated recognizer may change learning state", () => {
   assert.equal(isLearningEligible({ provider: "openai:whisper-1" }), true);
-  for (const p of ["browser:web-speech", "dev:simulation", "mock", "openai:gpt-4o-transcribe"]) assert.equal(isLearningEligible({ provider: p }), false, p);
+  assert.equal(isLearningEligible({ provider: "groq:whisper-large-v3" }), true); // the free recognizer
+  for (const p of ["browser:web-speech", "dev:simulation", "mock", "openai:gpt-4o-transcribe", "groq:distil-other"]) assert.equal(isLearningEligible({ provider: p }), false, p);
 });
 
 test("on-device / unvalidated recognition is practice only: feedback shown, learning state untouched", () => {
