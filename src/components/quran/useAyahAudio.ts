@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { reciterAudioUrl, useReciter } from "@/lib/quran/reciters";
 import { ayahStart, hasSurahAudio, type SurahTiming } from "@/lib/quran/surah-audio";
+import { loadAyahClip, readyClip } from "@/lib/quran/ayah-clip";
 import type { Ayah } from "@/lib/types";
 
 /**
@@ -15,12 +16,14 @@ import type { Ayah } from "@/lib/types";
  * - Whole-surah file (most reciters, src/lib/quran/surah-audio.ts): one recording of the surah, as in a Quran app.
  *   Ayahs follow each other inside the recording, so listening is continuous with no cut between ayahs; the player
  *   only watches the time to know which ayah is heard, and to stop or repeat at an ayah's end.
- * - Ayah by ayah (other reciters, or when the surah file fails): one file per ayah; the next ayah is loaded in a
- *   second player while the current one plays, and the two players take turns.
+ * - Ayah by ayah (other reciters, or when the surah file fails): one file per ayah, started at the voice and left
+ *   just after it (src/lib/quran/ayah-clip.ts); the next ayah is loaded in a second player while the current one
+ *   plays, and the two players take turns.
  * `onListEnd` (when given) is called at the end so the screen can move on to the next surah or page.
- * Pausing then playing goes on from the same moment. Playing one ayah (playOne) plays only that ayah.
+ * Pausing then playing goes on from the same moment. ▶ on one ayah (playFrom) plays only that ayah unless the
+ * learner chose «تستمر التلاوة»; the main ▶ (playAll) always plays on.
  */
-const CONTINUOUS_KEY = "modaker:audio-continuous";
+const CONTINUOUS_KEY = "modaker:ayah-tap-continues";
 
 // Timings of whole-surah files, per reciter and surah (shared by every player, kept for the visit).
 const timingLoads = new Map<string, Promise<SurahTiming | null>>();
@@ -42,6 +45,9 @@ function loadTiming(reciterId: string, surah: number): Promise<SurahTiming | nul
   }
   return p;
 }
+const clipVia = (reciterId: string, surah: number, ayah: number) =>
+  `/api/v1/quran/ayah-audio?reciter=${encodeURIComponent(reciterId)}&surah=${surah}&ayah=${ayah}`;
+
 // Surah files that failed to play on this device: those surahs are played ayah by ayah.
 const brokenFiles = new Set<string>();
 
@@ -68,12 +74,14 @@ export function useAyahAudio(ayahs: Ayah[], opts: { onListEnd?: (lastKey: string
   const [repeatRange, setRepeatRange] = useState(1);
   const counters = useRef({ each: 0, range: 0, stopAfterOne: false });
   const seg = useRef<SegState | null>(null); // set while playing from a whole-surah file
+  const ayahEnd = useRef<number | null>(null); // ayah by ayah: where the voice ends in the file playing now
+  const ayahDone = useRef(false); // ayah by ayah: stopped after one ayah (playing again replays it)
   const reciter = useReciter();
-  // Continuous (default): ▶ on an ayah plays on from it. Off: ▶ on an ayah plays only that ayah. Remembered on this device.
-  const [continuous, setContinuousState] = useState(true);
+  // ▶ on an ayah plays only that ayah (default); "on": plays on from it. The main ▶ always plays on. Remembered here.
+  const [continuous, setContinuousState] = useState(false);
   useEffect(() => {
     try {
-      if (window.localStorage.getItem(CONTINUOUS_KEY) === "off") setContinuousState(false);
+      if (window.localStorage.getItem(CONTINUOUS_KEY) === "on") setContinuousState(true);
     } catch {
       /* default */
     }
@@ -162,34 +170,47 @@ export function useAyahAudio(ayahs: Ayah[], opts: { onListEnd?: (lastKey: string
         return;
       }
 
-      // ── Ayah by ayah.
+      // ── Ayah by ayah: each file starts at the voice and moves on just after it (its silence is measured once).
       seg.current = null;
+      ayahDone.current = false;
       const url = reciterAudioUrl(reciter, a.surah, a.ayah);
+      const via = clipVia(reciter.id, a.surah, a.ayah);
+      const clip = readyClip(url);
+      ayahEnd.current = clip?.end ?? null;
       const prev = audio.current;
       const ready = preload.current;
       let swapped = false;
       if (ready && ready !== prev && ready.dataset.url === url) {
-        // The next ayah is already loaded in the second player: start it at once (no gap between ayahs).
+        // The next ayah is already loaded in the second player: start it at once.
         audio.current = ready;
         preload.current = prev;
         swapped = true;
-        ready.currentTime = 0;
-      } else if (prev.dataset.url === url) {
-        prev.currentTime = 0; // the same ayah again (repeat)
-      } else {
-        prev.src = url;
+      } else if (prev.dataset.url !== url) {
+        prev.src = clip?.src ?? url;
         prev.dataset.url = url;
       }
       const el = audio.current;
+      const start = clip?.start ?? 0;
+      el.currentTime = start;
+      if (el.readyState < 1 && start > 0)
+        el.addEventListener("loadedmetadata", () => el.dataset.url === url && el.currentTime < start && (el.currentTime = start), { once: true });
+      if (!clip) {
+        // Not measured yet (the first ayah): play it now, and stop at the voice's end once known.
+        void loadAyahClip(url, via).then((c) => {
+          if (audio.current === el && el.dataset.url === url) ayahEnd.current = c.end;
+        });
+      }
       el.play()
         .then(() => setPlaying(true))
-        .catch(() => {
+        .catch((e: unknown) => {
+          if ((e as { name?: string })?.name === "AbortError") return;
           if (swapped && audio.current === el) {
             // Some phones only let the first player start on its own: load the ayah there instead.
             audio.current = prev;
             preload.current = el;
-            prev.src = url;
+            prev.src = clip?.src ?? url;
             prev.dataset.url = url;
+            prev.currentTime = start;
             return prev.play().then(() => setPlaying(true));
           }
           throw new Error("play refused");
@@ -198,16 +219,18 @@ export function useAyahAudio(ayahs: Ayah[], opts: { onListEnd?: (lastKey: string
           setPlaying(false);
           setError(true);
         });
-      // Continuous listening: load the next ayah in the second player now, so it starts the moment this one ends.
+      // Continuous listening: measure and load the next ayah in the second player now, so it follows right away.
       const after = ayahs[i + 1];
-      const other = preload.current;
-      if (other && after && !counters.current.stopAfterOne && !segOf(i + 1)) {
+      if (after && !counters.current.stopAfterOne && !segOf(i + 1)) {
         const nextUrl = reciterAudioUrl(reciter, after.surah, after.ayah);
-        if (other.dataset.url !== nextUrl) {
-          other.src = nextUrl;
+        void loadAyahClip(nextUrl, clipVia(reciter.id, after.surah, after.ayah)).then((c) => {
+          const other = preload.current;
+          if (!other || other === audio.current || other.dataset.url === nextUrl) return;
+          other.src = c.src;
           other.dataset.url = nextUrl;
           other.load();
-        }
+          other.currentTime = c.start;
+        });
       }
     },
     [ayahs, reciter, segOf],
@@ -254,6 +277,12 @@ export function useAyahAudio(ayahs: Ayah[], opts: { onListEnd?: (lastKey: string
   const tick = (atFileEnd = false) => {
     const el = audio.current;
     let s = seg.current;
+    if (el && !s && ayahEnd.current != null && !el.paused && el.currentTime >= ayahEnd.current) {
+      // Ayah by ayah: the voice ended; the rest of the file is silence, so go on now.
+      ayahEnd.current = null;
+      el.pause();
+      return onAyahEnd();
+    }
     if (!el || !s || s.done) return;
     const t = atFileEnd ? Infinity : el.currentTime;
     while (s && t >= s.end - 0.03) {
@@ -278,11 +307,23 @@ export function useAyahAudio(ayahs: Ayah[], opts: { onListEnd?: (lastKey: string
       setCurrent(n);
     }
   };
+  // Ayah by ayah: the ayah ended (its voice, or the file).
+  const onAyahEnd = () => {
+    if (current == null) return;
+    const step = finishAyah(current);
+    if (step === "moved") return;
+    if (step === "next") return playIndex(current + 1);
+    setPlaying(false);
+    if (counters.current.stopAfterOne) ayahDone.current = true;
+    else endOfList();
+  };
+  const onAyahEndRef = useRef(onAyahEnd);
+  onAyahEndRef.current = onAyahEnd;
   const tickRef = useRef(tick);
   tickRef.current = tick;
 
   useEffect(() => {
-    if (!playing || !seg.current) return;
+    if (!playing) return;
     const id = window.setInterval(() => tickRef.current(), 50);
     return () => window.clearInterval(id);
   }, [playing, current]);
@@ -294,15 +335,10 @@ export function useAyahAudio(ayahs: Ayah[], opts: { onListEnd?: (lastKey: string
     const onEnded = (ev: Event) => {
       if (ev.currentTarget !== audio.current) return;
       if (seg.current) return tickRef.current(true);
-      if (current == null) return;
-      const step = finishAyah(current);
-      if (step === "moved") return;
-      if (step === "next") return playIndex(current + 1);
-      if (counters.current.stopAfterOne) return setPlaying(false);
-      endOfList();
+      onAyahEndRef.current();
     };
     const onTime = (ev: Event) => {
-      if (ev.currentTarget === audio.current && seg.current) tickRef.current();
+      if (ev.currentTarget === audio.current) tickRef.current();
     };
     const onError = (ev: Event) => {
       if (ev.currentTarget !== audio.current) return;
@@ -333,9 +369,9 @@ export function useAyahAudio(ayahs: Ayah[], opts: { onListEnd?: (lastKey: string
 
   const resume = () => {
     const s = seg.current;
-    if (s?.done) {
+    if (s?.done || (!s && ayahDone.current && current != null)) {
       counters.current.each = 0;
-      return playIndex(s.i); // stopped at the end of one ayah: hear it again
+      return playIndex(s ? s.i : current!); // stopped at the end of one ayah: hear it again
     }
     audio.current?.play().then(() => setPlaying(true)).catch(() => setError(true));
   };
@@ -353,7 +389,7 @@ export function useAyahAudio(ayahs: Ayah[], opts: { onListEnd?: (lastKey: string
     /** ▶ on an ayah: plays on from it (continuous listening), or only that ayah when continuous is off.
      *  ▶ on the ayah that was paused goes on from where it stopped. */
     playFrom(i: number) {
-      if (i === current && !playing && !error && !seg.current?.done && audio.current?.currentTime) return resume();
+      if (i === current && !playing && !error && !seg.current?.done && !ayahDone.current && audio.current?.currentTime) return resume();
       counters.current = { each: 0, range: 0, stopAfterOne: !continuous };
       playIndex(i);
     },
@@ -374,6 +410,8 @@ export function useAyahAudio(ayahs: Ayah[], opts: { onListEnd?: (lastKey: string
     /** go on from the moment it was paused */
     resume,
     stop() {
+      ayahEnd.current = null;
+      ayahDone.current = false;
       const el = audio.current;
       if (el) {
         el.pause();
