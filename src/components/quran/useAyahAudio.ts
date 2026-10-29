@@ -14,6 +14,8 @@ import type { Ayah } from "@/lib/types";
  * `onListEnd` (when given) is called at the end so the screen can move on to the next surah or page.
  * Playing one ayah (playOne) plays only that ayah.
  */
+const CONTINUOUS_KEY = "modaker:audio-continuous";
+
 export function useAyahAudio(ayahs: Ayah[], opts: { onListEnd?: (lastKey: string) => void } = {}) {
   const audio = useRef<HTMLAudioElement | null>(null);
   const preload = useRef<HTMLAudioElement | null>(null);
@@ -26,6 +28,23 @@ export function useAyahAudio(ayahs: Ayah[], opts: { onListEnd?: (lastKey: string
   const [repeatRange, setRepeatRange] = useState(1);
   const counters = useRef({ each: 0, range: 0, stopAfterOne: false });
   const reciter = useReciter();
+  // Continuous (default): ▶ on an ayah plays on from it. Off: ▶ on an ayah plays only that ayah. Remembered on this device.
+  const [continuous, setContinuousState] = useState(true);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(CONTINUOUS_KEY) === "off") setContinuousState(false);
+    } catch {
+      /* default */
+    }
+  }, []);
+  const setContinuous = useCallback((on: boolean) => {
+    setContinuousState(on);
+    try {
+      window.localStorage.setItem(CONTINUOUS_KEY, on ? "on" : "off");
+    } catch {
+      /* not remembered */
+    }
+  }, []);
 
   useEffect(() => {
     const el = new Audio();
@@ -119,6 +138,13 @@ export function useAyahAudio(ayahs: Ayah[], opts: { onListEnd?: (lastKey: string
     repeatRange,
     setRepeatEach,
     setRepeatRange,
+    continuous,
+    setContinuous,
+    /** ▶ on an ayah: plays on from it (continuous listening), or only that ayah when continuous is off */
+    playFrom(i: number) {
+      counters.current = { each: 0, range: 0, stopAfterOne: !continuous };
+      playIndex(i);
+    },
     /** play a single ayah (with repeatEach), then stop */
     playOne(i: number) {
       counters.current = { each: 0, range: 0, stopAfterOne: true };

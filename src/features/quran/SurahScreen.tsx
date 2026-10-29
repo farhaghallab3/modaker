@@ -243,7 +243,7 @@ function ReadingPanel({
       const au = audioRef.current;
       const i = ayahs.indexOf(a);
       if (au.current === i && au.playing) au.pause();
-      else au.playOne(i);
+      else au.playFrom(i);
     },
     [ayahs],
   );

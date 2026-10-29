@@ -144,7 +144,7 @@ export function MushafScreen({ page }: { page: number }) {
           onClose={() => setSelected(null)}
           onListen={() => {
             const i = ayahs.findIndex((a) => a.surah === selected.surah && a.ayah === selected.ayah);
-            if (i >= 0) audio.playOne(i);
+            if (i >= 0) audio.playFrom(i);
           }}
         />
       ) : null}
