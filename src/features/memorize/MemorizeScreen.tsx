@@ -243,7 +243,7 @@ function MemorizeSession({ meta }: { meta: SurahMeta }) {
                                 <IconButton
                                   icon={isPlaying ? "pause" : "volume"}
                                   label={isPlaying ? "إيقاف مؤقت" : `استمع للآية ${toArabicDigits(a.ayah)}`}
-                                  onClick={() => (isPlaying ? audio.pause() : audio.playOne(i))}
+                                  onClick={() => (isPlaying ? audio.pause() : audio.playFrom(i))}
                                   size={36}
                                 />
                                 <IconButton icon="lamp" label={`اسأل مُدّكِر عن الآية ${toArabicDigits(a.ayah)}`} onClick={() => setAskAyah(a.ayah)} size={36} />
