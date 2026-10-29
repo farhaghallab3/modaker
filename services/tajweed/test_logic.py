@@ -42,6 +42,17 @@ class Classify(unittest.TestCase):
         self.assertIsNone(classify(err("tajweed", rules=[NormalMaddRule()], exp=2, heard=2)))
         self.assertEqual(classify(err("tajweed", rules=[NormalMaddRule()], exp=2, heard=1))["rule"], "madd_tabii")
 
+    def test_aared_allows_two_four_six(self):
+        class AaredMaddRule:
+            correctness_type = "count"
+        for heard in (2, 4, 6):
+            self.assertIsNone(classify(err("tajweed", rules=[AaredMaddRule()], exp=4, heard=heard)))
+        self.assertEqual(classify(err("tajweed", rules=[AaredMaddRule()], exp=4, heard=1))["rule"], "madd_aared")
+
+    def test_harakat_length_only_is_not_a_mistake(self):
+        self.assertIsNone(classify(err("tashkeel", e_ph="لَاا", p_ph="لَااا")))
+        self.assertEqual(classify(err("tashkeel", e_ph="لَ", p_ph="لُ"))["kind"], "harakat")
+
     def test_qalqalah_only_when_missing(self):
         self.assertIsNone(classify(err("tajweed", rules=[Qalqalah()], replaced=[Qalqalah()])))
         self.assertEqual(classify(err("tajweed", rules=[Qalqalah()], missing=[Qalqalah()]))["rule"], "qalqalah")
@@ -68,12 +79,59 @@ class Words(unittest.TestCase):
         by = {(n["ayah"], n["word"]): n["kind"] for n in notes}
         self.assertEqual(by, {(1, 1): "letters", (2, 0): "harakat"})
 
+    def test_note_names_its_letter_and_sounds(self):
+        # synthetic Arabic letters, not Quran text: words "دَبْ" and "سَمِ"
+        words = ["\u062f\u064e\u0628\u0652", "\u0633\u064e\u0645\u0650"]
+        text = " ".join(words)
+        offs = word_offsets(words)
+        refs = [WordRef(1, 0, 2), WordRef(1, 1, 2)]
+        e = err("tashkeel", pos=0, e_ph="\u062f\u064f", p_ph="\u062f\u064e")  # damma expected, fatha heard
+        e.uthmani_pos = (0, 2)
+        (n,) = notes_from_errors([e], refs, offs, text)
+        self.assertEqual((n["letter"], n["expected"], n["heard"]), ("\u062f", "\u062f\u064f", "\u062f\u064e"))
+
+    def test_stop_on_last_letter_is_allowed(self):
+        words = ["\u062f\u064e\u0628\u0652", "\u0633\u064e\u0645\u0650"]
+        text = " ".join(words)
+        offs = word_offsets(words)
+        refs = [WordRef(1, 0, 2), WordRef(1, 1, 2)]
+        last = err("tashkeel", op="delete", e_ph="\u0645\u0650", p_ph="\u0645")  # last vowel dropped: a stop
+        last.uthmani_pos = (7, 9)
+        self.assertEqual(notes_from_errors([last], refs, offs, text), [])
+        wrong = err("tashkeel", e_ph="\u0645\u0650", p_ph="\u0645\u064e")  # a different vowel is still a mistake
+        wrong.uthmani_pos = (7, 9)
+        self.assertEqual(len(notes_from_errors([wrong], refs, offs, text)), 1)
+        mid = err("tashkeel", op="delete", e_ph="\u0633\u064e", p_ph="\u0633")  # vowel dropped mid-word
+        mid.uthmani_pos = (5, 7)
+        self.assertEqual(notes_from_errors([mid], refs, offs, text)[0]["letter"], "\u0633")
+
     def test_finalize_caps_keeping_letters(self):
         notes = [{"ayah": 1, "word": i, "kind": "tajweed"} for i in range(20)] + [{"ayah": 2, "word": 0, "kind": "letters"}]
         out = finalize(notes, limit=5)
         self.assertEqual(len(out), 5)
         self.assertIn({"ayah": 2, "word": 0, "kind": "letters"}, out)
         self.assertEqual(out, sorted(out, key=lambda n: (n["ayah"], n["word"])))
+
+
+class Join(unittest.TestCase):
+    def test_join_shifts_mappings_and_maps_spaces_to_nothing(self):
+        from dataclasses import dataclass
+        from logic import join_references
+
+        @dataclass
+        class M:
+            pos: tuple
+            tajweed_rules: object = None
+            deleted: bool = False
+
+        a = ("ab", "xyz", [M((0, 2)), M((2, 3), tajweed_rules=["r"])])
+        b = ("c", "uv", [M((0, 2))])
+        text, ph, maps = join_references([a, b], " ")
+        self.assertEqual((text, ph), ("ab c", "xyzuv"))
+        self.assertEqual(len(maps), len(text))
+        self.assertEqual([m.pos for m in maps], [(0, 2), (2, 3), (3, 3), (3, 5)])
+        self.assertTrue(maps[2].deleted and maps[2].tajweed_rules is None)
+        self.assertEqual(maps[1].tajweed_rules, ["r"])
 
 
 class Pieces(unittest.TestCase):

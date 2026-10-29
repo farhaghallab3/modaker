@@ -8,7 +8,17 @@
 import { toArabicDigits } from "@/lib/quran/surahs";
 import type { RecitationAnalysis } from "@/lib/types";
 
-export type TeacherPhraseKey = "perfect" | "repeat" | "incomplete" | "unsure" | "unheard" | "tajweedFix" | "tajweedOk";
+export type TeacherPhraseKey =
+  | "perfect"
+  | "repeat"
+  | "incomplete"
+  | "unsure"
+  | "unheard"
+  | "tajweedFix"
+  | "tajweedOk"
+  | "tajweedIntro"
+  | "hearSheikh"
+  | "tajweedEnd";
 
 export const TEACHER_PHRASES: Record<TeacherPhraseKey, string> = {
   perfect: "ما شاء الله، أحسنت! حفظك صحيح.",
@@ -19,6 +29,11 @@ export const TEACHER_PHRASES: Record<TeacherPhraseKey, string> = {
   // Said after the tajweed check (when it runs), following the sentence above.
   tajweedFix: "وفي التجويد ملاحظات على بعض الكلمات، كتبتها لك تحت. استمع إلى الشيخ فيها، ثم أعدها بتأنٍّ.",
   tajweedOk: "والتجويد فيما سمعته سليم، بارك الله فيك.",
+  // When the teacher goes through the tajweed notes out loud: intro, then for each note its own sentence
+  // (written by the server, see tajweedSpeech), «اسمعها من الشيخ» and the word in the reciter's voice, then the end.
+  tajweedIntro: "وعندي لك ملاحظات صغيرة في التجويد، اسمعها معي.",
+  hearSheikh: "اسمعها من الشيخ.",
+  tajweedEnd: "أعد هذه الكلمات الآن بتأنٍّ، وأنت على خير إن شاء الله.",
 };
 
 /** Short stable fingerprint of a sentence: a recorded file is used only while its sentence is unchanged. */

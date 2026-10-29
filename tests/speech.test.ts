@@ -209,10 +209,10 @@ test("disabled feature or missing key → 503 with a friendly message", async ()
 
 // ── rate limiting & cost caps ────────────────────────────────────────────
 
-test("rate limit: the 13th request in the window is refused with Retry-After; another client is unaffected", async () => {
+test("rate limit: the 25th request in the window is refused with Retry-After; another client is unaffected", async () => {
   fakeOpenAi();
   const from = (ip: string) => req(payload(), { "x-forwarded-for": ip });
-  for (let i = 0; i < 12; i++) assert.equal((await POST(from("10.0.0.1"), undefined)).status, 200, `request ${i + 1}`);
+  for (let i = 0; i < 24; i++) assert.equal((await POST(from("10.0.0.1"), undefined)).status, 200, `request ${i + 1}`);
   const blocked = await POST(from("10.0.0.1"), undefined);
   assert.equal(blocked.status, 429);
   assert.ok(Number(blocked.headers.get("retry-after")) > 0);

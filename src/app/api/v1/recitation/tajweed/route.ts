@@ -1,7 +1,9 @@
 /**
  * POST /api/v1/recitation/tajweed  (multipart/form-data)
  *   audio: Blob (≤ 15 MB, audio/* allowlist)   range: JSON AyahRange
- *   → { notes: TajweedNote[], matched }
+ *   → { notes: TajweedNote[], matched, speech }
+ *   speech: what the teacher says about the first notes, signed for /assistant/speech (null when the voice is off).
+ *   Written here from the notes (ayah/word numbers, letter names, rules), never Quran words.
  * GET → { enabled }
  *
  * Runs next to /transcribe on the same recording: the word check answers first, the tajweed notes follow.
@@ -13,6 +15,8 @@ import { ApiError, ProviderError, apiError } from "@/server/errors";
 import { enforceRateLimit, json, route } from "@/server/http";
 import { ALLOWED_AUDIO_MIME, baseMime } from "@/server/stt/mime";
 import { checkTajweed, tajweedConfigured, wakeTajweed } from "@/server/tajweed";
+import { speechForText } from "@/server/tts/speech";
+import { tajweedSpeech } from "@/lib/recitation/tajweed-notes";
 import { MAX_RECITATION_AYAHS, ayahRangeSchema } from "@/server/validation";
 
 export const runtime = "nodejs";
@@ -55,7 +59,9 @@ export const POST = route(async (req) => {
   if (range.to - range.from + 1 > MAX_RECITATION_AYAHS) throw apiError(400, "range_too_large");
 
   try {
-    return json(await checkTajweed(await audio.arrayBuffer(), mimeType, range));
+    const result = await checkTajweed(await audio.arrayBuffer(), mimeType, range);
+    const lines = tajweedSpeech(result.notes).map((t) => speechForText(t));
+    return json({ ...result, speech: lines.length && lines.every(Boolean) ? lines : null });
   } catch (e) {
     if (e instanceof ProviderError) {
       console.error(e.message);

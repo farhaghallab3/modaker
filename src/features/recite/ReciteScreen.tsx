@@ -9,8 +9,8 @@ import { SourceLine } from "@/components/quran/QuranVerse";
 import { useAyahAudio } from "@/components/quran/useAyahAudio";
 import { BetaNote, RecitationFeedback, TextOnlyNote } from "@/components/recitation/RecitationFeedback";
 import { RecitationRecorder } from "@/components/recitation/RecitationRecorder";
-import { TajweedNotes, type TajweedState } from "@/components/recitation/TajweedNotes";
-import { TeacherVoice } from "@/components/recitation/TeacherVoice";
+import { TajweedNotes, noteId, type TajweedState } from "@/components/recitation/TajweedNotes";
+import { TeacherVoice, type TeacherFollowUp } from "@/components/recitation/TeacherVoice";
 import { SelfGradeButtons } from "@/components/review/SelfReview";
 import { useRecitationRecorder } from "@/components/recitation/useRecitationRecorder";
 import { Icon } from "@/components/ui/Icon";
@@ -19,7 +19,9 @@ import { FocusActionBar, FocusHeader } from "@/features/focus/FocusHeader";
 import { SOURCE_UNAVAILABLE } from "@/features/quran/states";
 import { api, useOnline, useSurah } from "@/lib/api";
 import { forgetTajweedCheck, prepareTajweedCheck, takeTajweedCheck } from "@/lib/recitation/tajweed-check";
-import { prepareTeacherVoice, stopTeacher } from "@/lib/recitation/teacher-voice";
+import { loadSpokenText, prepareTeacherVoice, stopTeacher } from "@/lib/recitation/teacher-voice";
+import { SPOKEN_NOTES, noteWord, type TajweedNote } from "@/lib/recitation/tajweed-notes";
+import { wordAudioUrl } from "@/lib/quran/word-audio";
 import { getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import { analyzeRecitationWithOverrun } from "@/lib/recitation/compare";
 import { MAX_RECITE_AYAHS, clampRange, firstWord, memorizedRanges } from "@/lib/recitation/ranges";
@@ -180,6 +182,22 @@ function ReciteSession({
   const lastTranscript = useRef<Transcript | null>(null);
   const [tajweed, setTajweed] = useState<TajweedState | null>(null);
   const tajweedRun = useRef(0);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+
+  // A word alone in a human reciter's voice: only when Modaker's text places the word exactly like the checker.
+  const wordUrl = useCallback(
+    (n: TajweedNote) => (noteWord(n, verses.find((v) => v.ayah === n.ayah)?.textUthmani) ? wordAudioUrl(range.surah, n.ayah, n.word) : null),
+    [verses, range.surah],
+  );
+
+  // What the teacher says after the result sentence. The notes' sentences start loading the moment the check answers.
+  const followUp = useMemo<TeacherFollowUp | null>(() => {
+    if (tajweed?.state !== "done" || tajweed.result.matched === 0) return null;
+    const { notes, speech } = tajweed.result;
+    if (!notes.length) return { phrase: "tajweedOk" };
+    if (!speech || speech.length !== Math.min(notes.length, SPOKEN_NOTES)) return { phrase: "tajweedFix" };
+    return { talk: speech.map((p, i) => ({ id: noteId(notes[i]), clip: loadSpokenText(p), wordUrl: wordUrl(notes[i]) })) };
+  }, [tajweed, wordUrl]);
   const resultRef = useRef<HTMLDivElement>(null);
   const versesRef = useRef(verses);
   versesRef.current = verses;
@@ -240,6 +258,7 @@ function ReciteSession({
     forgetTajweedCheck();
     tajweedRun.current++;
     setTajweed(null);
+    setSpeakingId(null);
     audio.stop();
     setListen(false);
     setAnalysis(null);
@@ -433,9 +452,8 @@ function ReciteSession({
                 if (i >= 0) audio.playOne(i);
               }}
               onRetry={retry}
-              followUp={
-                tajweed?.state === "done" && tajweed.result.matched > 0 ? (tajweed.result.notes.length ? "tajweedFix" : "tajweedOk") : null
-              }
+              followUp={followUp}
+              onSpeaking={setSpeakingId}
             />
             {tajweed && analysis.recognition === "good" ? (
               <TajweedNotes
@@ -447,6 +465,8 @@ function ReciteSession({
                   const i = verses.findIndex((v) => v.ayah === n);
                   if (i >= 0) audio.playOne(i);
                 }}
+                wordUrl={wordUrl}
+                speakingId={speakingId}
               />
             ) : null}
             <RecitationFeedback
