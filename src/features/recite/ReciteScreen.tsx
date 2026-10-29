@@ -311,6 +311,16 @@ function ReciteSession({
     setSaved(true);
   }
 
+  // A clearly heard recitation is saved by itself, like a teacher writing it down: the dashboard and the reviews
+  // move without an extra tap. Results that were not heard well are never saved (the learner is asked to repeat).
+  const autoSaved = useRef<RecitationAnalysis | null>(null);
+  useEffect(() => {
+    if (stage !== "feedback" || !analysis || analysis.recognition !== "good" || saved || autoSaved.current === analysis) return;
+    autoSaved.current = analysis;
+    actions.recordRecitation(analysis);
+    setSaved(true);
+  }, [stage, analysis, saved, actions]);
+
   // What saving can actually do: only a well-heard, validated-recognizer result with at least one judged ayah schedules anything.
   const changesLearning = !!analysis && analysis.learningEligible && analysis.recognition === "good" && analysis.ayahs.some((a) => a.status !== "uncertain");
   const nextReview = useMemo(() => {

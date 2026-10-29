@@ -49,6 +49,7 @@ Recitation checking ships as an explicitly conservative **Beta**. What productio
 
 - **Recognizer:** server upload → `/api/v1/recitation/transcribe` → OpenAI **`whisper-1`** (the only primary the code allows: any non-Whisper `OPENAI_STT_MODEL` is ignored with a warning, because the GPT-4o family silently corrects wrong words toward the Quran). Language `ar`, `temperature 0`, **no prompt by default** (`STT_PROMPT=off`). Optional `STT_SECOND_OPINION` model is evidence only.
 - **Not used in production:** the CTC probes, `/dev/*` tools, `src/server/stt/benchmark.ts`. Dev routes are files named `page.dev.tsx` / `route.dev.ts`; they are routes only when the build runs with `DEV_TOOLS=1` (PowerShell: `$env:DEV_TOOLS=1; npm run dev`, plus `STT_BENCHMARK=on`, `CTC_CLIPS_DIR=...`). A normal build contains none of them.
+- **Groq `whisper-large-v3`** (free tier, `STT_PROVIDER=groq`) is the same open Whisper family and also changes learning state (2026-10-29, so the free deployment can record progress).
 - **On-device speech (`NEXT_PUBLIC_STT_MODE=browser`)** and simulations are **practice only**: feedback is shown, learning state is never changed (`learningEligible=false`).
 
 What may change learning state:
