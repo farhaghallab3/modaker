@@ -10,9 +10,15 @@ import type { Ayah } from "@/lib/types";
  * N times before moving on; `repeatRange` loops the whole range N times.
  * The voice is the learner's chosen reciter (src/lib/quran/reciters.ts); switching reciter while
  * an ayah plays restarts that ayah in the new voice.
+ * Playing the whole list flows without pauses: the next ayah is fetched while the current one plays, and
+ * `onListEnd` (when given) is called at the end so the screen can move on to the next surah or page.
+ * Playing one ayah (playOne) plays only that ayah.
  */
-export function useAyahAudio(ayahs: Ayah[]) {
+export function useAyahAudio(ayahs: Ayah[], opts: { onListEnd?: (lastKey: string) => void } = {}) {
   const audio = useRef<HTMLAudioElement | null>(null);
+  const preload = useRef<HTMLAudioElement | null>(null);
+  const onListEnd = useRef(opts.onListEnd);
+  onListEnd.current = opts.onListEnd;
   const [current, setCurrent] = useState<number | null>(null); // index in ayahs
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState(false);
@@ -25,9 +31,13 @@ export function useAyahAudio(ayahs: Ayah[]) {
     const el = new Audio();
     el.preload = "none";
     audio.current = el;
+    const next = new Audio();
+    next.preload = "auto";
+    preload.current = next;
     return () => {
       el.pause();
       el.src = "";
+      next.src = "";
     };
   }, []);
 
@@ -48,6 +58,12 @@ export function useAyahAudio(ayahs: Ayah[]) {
           setPlaying(false);
           setError(true);
         });
+      // Continuous listening: fetch the next ayah now, so it starts the moment this one ends.
+      const after = ayahs[i + 1];
+      if (preload.current && after && !counters.current.stopAfterOne) {
+        preload.current.src = reciterAudioUrl(reciter, after.surah, after.ayah);
+        preload.current.load();
+      }
     },
     [ayahs, reciter],
   );
@@ -80,6 +96,8 @@ export function useAyahAudio(ayahs: Ayah[]) {
       c.range = 0;
       setPlaying(false);
       setCurrent(null);
+      const last = ayahs[ayahs.length - 1];
+      if (last) onListEnd.current?.(last.key);
     };
     const onError = () => {
       setPlaying(false);
@@ -91,7 +109,7 @@ export function useAyahAudio(ayahs: Ayah[]) {
       el.removeEventListener("ended", onEnded);
       el.removeEventListener("error", onError);
     };
-  }, [current, ayahs.length, repeatEach, repeatRange, playIndex]);
+  }, [current, ayahs, repeatEach, repeatRange, playIndex]);
 
   return {
     current,

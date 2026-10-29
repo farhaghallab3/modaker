@@ -12,6 +12,7 @@ import { api, useAsync } from "@/lib/api";
 import { MUSHAF_PAGES, isValidPage, pageForSurah, type MushafWord } from "@/lib/quran/mushaf";
 import { SURAHS, getSurahMeta, toArabicDigits } from "@/lib/quran/surahs";
 import type { Ayah } from "@/lib/types";
+import { markContinue, takeContinue } from "@/lib/quran/continue-audio";
 import { SourceError, VerseSkeleton } from "@/features/quran/states";
 
 const LAST_PAGE_KEY = "muzakkir:mushaf-page";
@@ -80,7 +81,22 @@ export function MushafScreen({ page }: { page: number }) {
     }
     return [...seen.values()];
   }, [data]);
-  const audio = useAyahAudio(ayahs);
+  // At the end of the page, listening goes on with the next page.
+  const audio = useAyahAudio(ayahs, {
+    onListEnd: (lastKey) => {
+      if (page >= MUSHAF_PAGES) return;
+      markContinue(`page:${page + 1}`, lastKey);
+      go(page + 1);
+    },
+  });
+  useEffect(() => {
+    if (!ayahs.length) return;
+    const handed = takeContinue(`page:${page}`);
+    if (!handed) return;
+    // An ayah that started on the previous page was already heard there.
+    audio.playAll(ayahs[0].key === handed.lastKey && ayahs.length > 1 ? 1 : 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ayahs, page]);
   const activeAyah = audio.current != null ? ayahs[audio.current]?.key : null;
 
   const surahs = data?.surahs ?? [];
@@ -128,7 +144,7 @@ export function MushafScreen({ page }: { page: number }) {
           onClose={() => setSelected(null)}
           onListen={() => {
             const i = ayahs.findIndex((a) => a.surah === selected.surah && a.ayah === selected.ayah);
-            if (i >= 0) audio.playAll(i);
+            if (i >= 0) audio.playOne(i);
           }}
         />
       ) : null}
