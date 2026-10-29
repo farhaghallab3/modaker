@@ -139,6 +139,19 @@ export function AudioPlayer({
 
       <div id={settingsId} hidden={!open} className="mt-3 grid gap-3 sm:grid-cols-2 border-t hairline pt-3">
         <ReciterSelect className="sm:col-span-2" />
+        <div className="flex items-center justify-between gap-3 sm:col-span-2 sm:justify-start">
+          <span className="text-xs text-muted">عند الضغط على آية</span>
+          <Segmented
+            label="ما يحدث عند الضغط على آية"
+            value={audio.continuous ? "on" : "off"}
+            onChange={(v) => audio.setContinuous(v === "on")}
+            options={[
+              { value: "on", label: "تستمر التلاوة" },
+              { value: "off", label: "هذه الآية فقط" },
+            ]}
+            className="[&_button]:h-8 [&_button]:px-2.5"
+          />
+        </div>
         <div className="flex items-center justify-between gap-3 sm:justify-start">
           <span className="text-xs text-muted">كرّر كل آية</span>
           <Segmented
