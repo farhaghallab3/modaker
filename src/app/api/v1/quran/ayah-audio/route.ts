@@ -2,7 +2,7 @@
  * GET /api/v1/quran/ayah-audio?reciter=<id>&surah=<n>&ayah=<n> → the reciter's ayah file (EveryAyah), served from
  * our origin so the browser can measure its silence (src/lib/quran/ayah-clip.ts). Cached for good by the CDN.
  */
-import { RECITERS, reciterAudioUrl } from "@/lib/quran/reciters";
+import { RECITERS, reciterAudioUrl } from "@/lib/quran/reciter-list";
 import { getSurahMeta } from "@/lib/quran/surahs";
 import { apiError } from "@/server/errors";
 import { parseSurahParam, route } from "@/server/http";
