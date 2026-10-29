@@ -45,6 +45,8 @@ export const env = {
   groqApiKey: () => str("GROQ_API_KEY"),
   groqBaseUrl: () => str("GROQ_BASE_URL", "https://api.groq.com/openai/v1").replace(/\/+$/, ""),
   groqSttModel: () => str("GROQ_STT_MODEL", "whisper-large-v3"),
+  /** The free chat model that writes what the teacher says after a recitation (Groq; see server/teacher.ts). */
+  teacherModel: () => str("TEACHER_MODEL", "llama-3.3-70b-versatile"),
   openaiApiKey: () => str("OPENAI_API_KEY"),
   openaiBaseUrl: () => str("OPENAI_BASE_URL", "https://api.openai.com/v1").replace(/\/+$/, ""),
   openaiSttModel: () => str("OPENAI_STT_MODEL", "whisper-1"),

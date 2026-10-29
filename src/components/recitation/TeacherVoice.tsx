@@ -17,8 +17,19 @@ export interface TeacherTalkItem {
   wordUrl: string | null;
 }
 
-/** What follows the result sentence once the tajweed check answers. */
+/** What follows the result sentence once the tajweed check answers (used when the full teacher script is unavailable). */
 export type TeacherFollowUp = { phrase: TeacherPhraseKey } | { talk: TeacherTalkItem[] };
+
+/** One step of the teacher's script: a sentence in the teacher's voice, or the Quran from a human reciter. */
+export type TeacherItem =
+  | { kind: "say"; text: string; clip: Promise<string | null> }
+  | { kind: "word"; id: string; url: string | null }
+  | { kind: "ayah"; url: string | null };
+
+/** The full script: being written, ready, or unavailable (then the short follow-up is used). */
+export type TeacherScriptState = { state: "waiting" } | { state: "ready"; items: TeacherItem[] } | { state: "failed" };
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * «المعلّم»: the moment a recitation is checked, the teacher says the result out loud (a short fixed sentence, prepared
@@ -33,11 +44,14 @@ export function TeacherVoice({
   onListenAyah,
   onRetry,
   followUp = null,
+  script = null,
   onSpeaking,
 }: {
   analysis: RecitationAnalysis;
   /** Said right after the result sentence once the tajweed check answers (null: nothing more to say). */
   followUp?: TeacherFollowUp | null;
+  /** The teacher's full script (praise, what was read and skipped, each word to fix with the reciter). */
+  script?: TeacherScriptState | null;
   canListen: (ayah: number) => boolean;
   onListenAyah: (ayah: number) => void;
   onRetry: () => void;
@@ -51,6 +65,12 @@ export function TeacherVoice({
   const follow = key === "unheard" ? null : followUp;
   const followRef = useRef(follow);
   followRef.current = follow;
+  const scriptOn = key === "unheard" ? null : script;
+  const scriptRef = useRef(scriptOn);
+  scriptRef.current = scriptOn;
+  const waitSaid = useRef(false);
+  const busy = useRef(false);
+  const [line, setLine] = useState<string | null>(null);
   const speakingRef = useRef(onSpeaking);
   speakingRef.current = onSpeaking;
   const firstDone = useRef(false);
@@ -65,8 +85,52 @@ export function TeacherVoice({
     setVoice(hadVoice.current ? "idle" : "none");
   };
 
-  // After the result sentence: the tajweed sentence, or the notes one by one like a sheikh going through them.
+  // The full script: sentences in the teacher's voice (shown as they are said), and the Quran from the reciter.
+  const playScript = async (g: number, items: TeacherItem[]) => {
+    followSaid.current = true;
+    setVoice("playing");
+    for (const it of items) {
+      if (!live(g)) return;
+      if (it.kind === "say") {
+        setLine(it.text);
+        const clip = await it.clip;
+        if (!live(g)) return;
+        if (clip && (await playClip(clip))) hadVoice.current = true;
+        else if (!clip) await pause(Math.min(7000, 1500 + it.text.length * 55)); // no voice: time to read it
+      } else if (it.url) {
+        if (it.kind === "word") speakingRef.current?.(it.id);
+        await playClip(it.url);
+        speakingRef.current?.(null);
+        if (live(g)) await pause(250);
+      }
+    }
+    finish(g);
+  };
+
+  // After the result sentence: the full script when it is ready; while it is being written, a short «one moment»;
+  // without it, the tajweed sentence or the notes one by one.
   const sayFollowUp = async (g: number) => {
+    if (busy.current || followSaid.current || !live(g)) return;
+    const sc = scriptRef.current;
+    if (sc?.state === "ready") {
+      busy.current = true;
+      try {
+        return await playScript(g, sc.items);
+      } finally {
+        busy.current = false;
+      }
+    }
+    if (sc?.state === "waiting") {
+      if (waitSaid.current) return;
+      waitSaid.current = true;
+      busy.current = true;
+      setVoice("playing");
+      if (await sayPhrase("teacherWait")) hadVoice.current = true;
+      busy.current = false;
+      if (!live(g)) return;
+      if (scriptRef.current?.state === "waiting") return setVoice(hadVoice.current ? "idle" : "none");
+      return sayFollowUp(g);
+    }
     const f = followRef.current;
     if (!f || followSaid.current || !live(g)) return finish(g);
     followSaid.current = true;
@@ -103,14 +167,17 @@ export function TeacherVoice({
     stopTeacher();
     const g = teacherGeneration();
     runGen.current = g;
-    if (again) followSaid.current = false;
+    if (again) {
+      followSaid.current = false;
+      setLine(null);
+    }
     firstDone.current = false;
     setVoice("playing");
     const ok = await sayPhrase(key);
     if (!live(g)) return;
     if (ok) hadVoice.current = true;
     firstDone.current = true;
-    if (!ok && !hadVoice.current) return setVoice("none");
+    if (!ok && !hadVoice.current) setVoice("none");
     await sayFollowUp(g);
   };
 
@@ -131,9 +198,9 @@ export function TeacherVoice({
 
   // The check answered after the result sentence ended: go on, unless the learner stopped the teacher meanwhile.
   useEffect(() => {
-    if (follow && firstDone.current && !followSaid.current && live(runGen.current)) void sayFollowUp(runGen.current);
+    if ((follow || scriptOn) && firstDone.current && !followSaid.current && live(runGen.current)) void sayFollowUp(runGen.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [follow]);
+  }, [follow, scriptOn]);
 
   const repeat = ayahsToRepeat(analysis).filter(canListen).slice(0, 3);
   const showRetry = key !== "perfect";
@@ -148,8 +215,15 @@ export function TeacherVoice({
           <p className="text-xs font-semibold text-olive">المعلّم</p>
           <p role="status" className="mt-1 text-[1.05rem] leading-8 text-ink">
             {text}
-            {follow && "phrase" in follow ? <> {TEACHER_PHRASES[follow.phrase]}</> : null}
+            {follow && "phrase" in follow && scriptOn?.state !== "ready" ? <> {TEACHER_PHRASES[follow.phrase]}</> : null}
           </p>
+          {line ? (
+            <p aria-live="polite" className="mt-2 rounded-xl bg-paper/80 px-3 py-2 text-[0.98rem] leading-8 text-forest animate-rise">
+              {line}
+            </p>
+          ) : scriptOn?.state === "waiting" ? (
+            <p className="mt-2 text-sm text-muted animate-pulse">الشيخ يستمع إلى تلاوتك…</p>
+          ) : null}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {repeat.map((n) => (
               <Button

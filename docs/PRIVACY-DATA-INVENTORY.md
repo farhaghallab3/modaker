@@ -37,6 +37,7 @@ IP addresses are not stored by the application (rate limiting is in-memory). Use
 | OpenAI (speech) | recitation audio | `STT_PROVIDER=openai` + `NEXT_PUBLIC_STT_MODE=server` + key |
 | Groq (speech) | recitation audio | `STT_PROVIDER=groq` + `NEXT_PUBLIC_STT_MODE=server` + `GROQ_API_KEY` |
 | Tajweed checker (our own Hugging Face Space, `services/tajweed`) | recitation audio + ayah range; decoded in memory, not stored or logged | `TAJWEED_URL` + `TAJWEED_KEY` set and server STT mode |
+| Groq (teacher sentences) | counts, ayah and word numbers, and tajweed hints from a recitation (no audio, no transcript, no Quran text) | `GROQ_API_KEY` set and `COACH_AI` not `off` |
 | Google Gemini (spoken answers) | the assistant's generated explanation text (never user audio, never Quran/hadith text). **Free tier: Google may use it to improve its products** | `GEMINI_API_KEY` set (`TTS_PROVIDER=auto` or `gemini`) |
 | OpenAI (spoken answers) | the assistant's generated explanation text | `OPENAI_API_KEY` set and Gemini not chosen |
 | OpenAI (embeddings) | tafsir/editorial text at indexing time; the user's **question text** at query time | `EMBEDDING_PROVIDER=openai` + key |
