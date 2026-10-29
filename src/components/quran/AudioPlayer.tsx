@@ -146,8 +146,8 @@ export function AudioPlayer({
             value={audio.continuous ? "on" : "off"}
             onChange={(v) => audio.setContinuous(v === "on")}
             options={[
-              { value: "on", label: "تستمر التلاوة" },
               { value: "off", label: "هذه الآية فقط" },
+              { value: "on", label: "تستمر التلاوة" },
             ]}
             className="[&_button]:h-8 [&_button]:px-2.5"
           />
