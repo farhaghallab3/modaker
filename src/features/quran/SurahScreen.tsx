@@ -1,7 +1,8 @@
 "use client";
 
 import { pageForSurah } from "@/lib/quran/mushaf";
-import { useParams } from "next/navigation";
+import { markContinue, takeContinue } from "@/lib/quran/continue-audio";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Page } from "@/components/layout/PageHeader";
 import { AudioPlayer } from "@/components/quran/AudioPlayer";
@@ -191,7 +192,28 @@ function ReadingPanel({
 }) {
   const { state, actions } = useApp();
   const ayahs = useMemo(() => surah.data?.ayahs ?? [], [surah.data]);
-  const audio = useAyahAudio(ayahs);
+  const router = useRouter();
+  // At the end of the surah, listening goes on with the next one (the whole Quran, without stopping).
+  const audio = useAyahAudio(ayahs, {
+    onListEnd: () => {
+      if (meta.number >= 114) return;
+      markContinue(`surah:${meta.number + 1}`);
+      router.push(`/quran/${meta.number + 1}`);
+    },
+  });
+  // Keep the ayah being recited in view while listening continuously.
+  useEffect(() => {
+    if (!audio.playing || audio.current == null) return;
+    const a = ayahs[audio.current];
+    const el = a ? document.getElementById(`ayah-${a.ayah}`) : null;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.top < 80 || r.bottom > window.innerHeight - 160) el.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [audio.current, audio.playing, ayahs]);
+  useEffect(() => {
+    if (ayahs.length && takeContinue(`surah:${meta.number}`)) audio.playAll(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ayahs, meta.number]);
   const [flashAyah, setFlashAyah] = useState<number | null>(null);
   const bookmarks = useMemo(() => new Set(state.bookmarks.map((b) => b.key)), [state.bookmarks]);
   const resumeCont = continuation(state);
