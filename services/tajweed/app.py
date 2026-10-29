@@ -27,7 +27,7 @@ import torch
 from quran_transcript import Aya, alphabet as alph, explain_error, quran_phonetizer
 from quran_transcript.phonetics.moshaf_attributes import MoshafAttributes
 from quran_transcript.phonetics.search import NoPhonemesSearchResult, PhoneticSearch
-from logic import SR, WordRef, finalize, notes_from_errors, split_on_silence, word_offsets
+from logic import SR, WordRef, finalize, join_references, notes_from_errors, split_on_silence, word_offsets
 from muaalem_model import greedy_ctc, load_muaalem
 
 MODEL = os.environ.get("MUAALEM_MODEL", "obadx/muaalem-model-v3_2")
@@ -112,6 +112,29 @@ def _span_words(r) -> tuple[list[str], list[WordRef]]:
     return words, refs
 
 
+def _reference(words: list[str], refs: list[WordRef], stop: bool) -> tuple[str, str, list]:
+    """Correct phonemes for these words: read joined, or with a stop at the end of each ayah."""
+    space = alph.uthmani.space
+    if not stop:
+        text = space.join(words)
+        out = quran_phonetizer(text, MOSHAF, remove_spaces=True)
+        return text, out.phonemes, out.mappings
+    parts, group, ayah = [], [], None
+    for w, ref in zip(words, refs):
+        if ayah is not None and ref.ayah != ayah:
+            parts.append(group)
+            group = []
+        group.append(w)
+        ayah = ref.ayah
+    parts.append(group)
+    built = []
+    for g in parts:
+        text = space.join(g)
+        out = quran_phonetizer(text, MOSHAF, remove_spaces=True)
+        built.append((text, out.phonemes, out.mappings))
+    return join_references(built, space)
+
+
 def check(audio_b64: str, surah: float, from_: float, to: float, key: str) -> dict:
     if not SECRET or not hmac.compare_digest(str(key or ""), SECRET):
         return {"ok": False, "error": "unauthorized"}
@@ -154,15 +177,23 @@ def check(audio_b64: str, surah: float, from_: float, to: float, key: str) -> di
         if not words:
             continue
         matched += 1
-        text = space.join(words)
-        ref = quran_phonetizer(text, MOSHAF, remove_spaces=True)
-        errors = explain_error(uthmani_text=text, ref_ph_text=ref.phonemes, predicted_ph_text=ph, mappings=ref.mappings)
+        offsets_of = lambda text_words: word_offsets(text_words, len(space))  # noqa: E731
+        # Readers usually stop at the end of each ayah (then the last vowel drops and the next ayah starts
+        # with a hamza); some join ayahs. Build both readings and keep the one closer to what was heard.
+        best = None
+        for mode in ("stop", "joined"):
+            text, ref_ph, mappings = _reference(words, refs, stop=(mode == "stop"))
+            errors = explain_error(uthmani_text=text, ref_ph_text=ref_ph, predicted_ph_text=ph, mappings=mappings)
+            found = notes_from_errors(errors, refs, offsets_of(words))
+            if best is None or len(found) < len(best[1]):
+                best = (mode, found, ref_ph, errors)
+        mode, found, ref_ph, errors = best
+        notes.extend(found)
         if DEBUG:
             # Phoneme strings only (no audio): lets us see why a note was given.
-            print(f"[check] {surah}:{r.start.aya_idx}-{r.end.aya_idx}\n  expected: {ref.phonemes}\n  heard:    {ph}", flush=True)
+            print(f"[check] {surah}:{r.start.aya_idx}-{r.end.aya_idx} ({mode})\n  expected: {ref_ph}\n  heard:    {ph}", flush=True)
             for e in errors:
                 print(f"  {e.error_type}/{e.speech_error_type} pos={e.uthmani_pos} exp={e.expected_ph!r} got={e.preditected_ph!r} len={e.expected_len}/{e.predicted_len}", flush=True)
-        notes.extend(notes_from_errors(errors, refs, word_offsets(words, len(space))))
 
     return {
         "ok": True,

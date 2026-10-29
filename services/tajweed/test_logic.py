@@ -87,6 +87,27 @@ class Words(unittest.TestCase):
         self.assertEqual(out, sorted(out, key=lambda n: (n["ayah"], n["word"])))
 
 
+class Join(unittest.TestCase):
+    def test_join_shifts_mappings_and_maps_spaces_to_nothing(self):
+        from dataclasses import dataclass
+        from logic import join_references
+
+        @dataclass
+        class M:
+            pos: tuple
+            tajweed_rules: object = None
+            deleted: bool = False
+
+        a = ("ab", "xyz", [M((0, 2)), M((2, 3), tajweed_rules=["r"])])
+        b = ("c", "uv", [M((0, 2))])
+        text, ph, maps = join_references([a, b], " ")
+        self.assertEqual((text, ph), ("ab c", "xyzuv"))
+        self.assertEqual(len(maps), len(text))
+        self.assertEqual([m.pos for m in maps], [(0, 2), (2, 3), (3, 3), (3, 5)])
+        self.assertTrue(maps[2].deleted and maps[2].tajweed_rules is None)
+        self.assertEqual(maps[1].tajweed_rules, ["r"])
+
+
 class Pieces(unittest.TestCase):
     def tone(self, sec):
         t = np.arange(int(sec * SR)) / SR

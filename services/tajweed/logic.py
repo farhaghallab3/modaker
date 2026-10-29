@@ -137,6 +137,27 @@ def word_at(char_pos: int, offsets: list[int]) -> int:
     return i
 
 
+def join_references(parts: list[tuple[str, str, list]], space: str) -> tuple[str, str, list]:
+    """Join per-ayah phonetic references (text, phonemes, mappings) into one, as if read with a stop
+    at the end of each ayah. Mappings are per Uthmani character with (start, end) phoneme positions;
+    they are shifted, and each joining space maps to nothing."""
+    import dataclasses
+
+    texts, phonemes, mappings = [], "", []
+    for i, (text, ph, maps) in enumerate(parts):
+        off = len(phonemes)
+        if i:
+            proto = maps[0] if maps else (mappings[-1] if mappings else None)
+            if proto is None:
+                raise ValueError("empty reference")
+            for _ in space:
+                mappings.append(dataclasses.replace(proto, pos=(off, off), tajweed_rules=None, deleted=True))
+        mappings.extend(dataclasses.replace(m, pos=(m.pos[0] + off, m.pos[1] + off)) for m in maps)
+        texts.append(text)
+        phonemes += ph
+    return space.join(texts), phonemes, mappings
+
+
 # ---------------------------------------------------------------- errors → notes
 
 
