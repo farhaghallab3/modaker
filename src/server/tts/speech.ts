@@ -1,8 +1,10 @@
 /**
  * Spoken assistant answers (text-to-speech OUTPUT only). Completely separate from Quran recitation, STT and scoring.
  *
- *  - What may be spoken: only the assistant's own GENERATED explanation text, picked server-side from the typed blocks.
- *    Quran verses, hadith evidence, source quotations, templates and Level C (sensitive) answers are never spoken.
+ *  - The speaker button (speechFor): only the assistant's own GENERATED explanation text, picked server-side from the typed blocks.
+ *    Quran verses, hadith evidence, source quotations, templates and Level C (sensitive) answers are not offered there.
+ *  - A question asked by voice is answered by voice (replySpeechFor): the fixed wording and tafsir quotations too, but still never
+ *    Quran verses or hadith.
  *  - The endpoint is not a generic TTS proxy: the server signs the exact text it is willing to speak (HMAC, short expiry);
  *    the browser can only ask to speak text that came from a real assistant answer.
  *  - Server-side call only (Gemini TTS, free tier, or OpenAI TTS; see ttsEngine); audio is streamed back ephemerally and never stored.
@@ -11,6 +13,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { normalizeArabic } from "@/lib/quran/normalize";
 import type { AssistantAnswer, AnswerBlock } from "@/lib/types";
 import { env } from "../env";
+import { getSource } from "../rag/sources";
 
 export const SPEECH_MAX_CHARS = 1200;
 export const SPEECH_MIN_CHARS = 12;
@@ -62,6 +65,54 @@ export function speakableText(answer: Pick<AssistantAnswer, "blocks" | "verses" 
     if (nv.split(" ").length >= 3 && n.includes(` ${nv} `)) return null;
   }
   return truncateForSpeech(cleaned);
+}
+
+/**
+ * What is spoken back when the question was ASKED BY VOICE: the whole reply, like a teacher answering out loud.
+ * Fixed wording (warm openings, referrals, abstentions, notices), generated explanations and, for ordinary (Level B)
+ * questions, up to two approved tafsir quotations with their source named. Never spoken: Quran verses (and any part
+ * that contains an attached verse verbatim, or text between Quran brackets), hadith, or anything else that is not tafsir.
+ */
+export function voiceReplyText(answer: Pick<AssistantAnswer, "blocks" | "verses" | "safetyLevel">): string | null {
+  const blocks: AnswerBlock[] = answer.blocks ?? [];
+  const verses = [...(answer.verses ?? []).map((v) => v.textUthmani), ...blocks.flatMap((b) => (b.type === "quran" ? b.verses.map((v) => v.textUthmani) : []))]
+    .map(norm)
+    .filter((v) => v.split(" ").length >= 3);
+  const quotesVerse = (t: string) => {
+    const n = ` ${norm(t)} `;
+    return verses.some((v) => n.includes(` ${v} `));
+  };
+  const parts: string[] = [];
+  let quotes = 0;
+  for (const b of blocks) {
+    let text: string | null = null;
+    if (b.type === "explanation") text = b.text;
+    else if (b.type === "referral") text = b.text;
+    else if (b.type === "warning" && b.code !== "quote_mismatch") text = b.text; // the mismatch notice ends in «the verified text is:» + a verse
+    else if (b.type === "source_quote" && answer.safetyLevel === "B" && quotes < 2 && getSource(b.sourceId)?.kind === "tafsir") {
+      const body = b.text.replace(/﴿[^﴾]*﴾/g, " ").replace(/\{[^}]*\}/g, " ");
+      text = `قال في ${getSource(b.sourceId)?.title ?? "التفسير"}: ${body}`;
+      quotes++;
+    }
+    if (!text) continue;
+    const cleaned = text
+      .replace(/\[\d+\]/g, "")
+      .replace(/https?:\/\/\S+/g, "")
+      .replace(/[﴿﴾]/g, "")
+      .replace(/[ \t]+/g, " ")
+      .trim();
+    if (cleaned && !quotesVerse(cleaned) && !parts.includes(cleaned)) parts.push(cleaned);
+  }
+  const all = parts.join("\n");
+  return all.length >= SPEECH_MIN_CHARS ? truncateForSpeech(all) : null;
+}
+
+/** The spoken reply to a voice question (see voiceReplyText), signed; null when speech is off/unconfigured. */
+export function replySpeechFor(answer: AssistantAnswer, now = Date.now()): SpeechPayload | null {
+  if (!env.assistantTts() || !ttsEngine()) return null;
+  const key = env.sessionSecret();
+  const text = key ? voiceReplyText(answer) : null;
+  return text ? signSpeech(text, key, now) : null;
 }
 
 /** Signs text the server wrote itself (e.g. recitation feedback sentences), or null when speech is off/unconfigured. */

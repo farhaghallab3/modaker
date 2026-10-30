@@ -41,6 +41,8 @@ export function getLlmProvider(): LLMProvider | null {
       return env.anthropicApiKey() ? new AnthropicProvider() : null;
     case "openai":
       return env.openaiApiKey() ? new OpenAiChatProvider() : null;
+    case "groq": // free tier, OpenAI-compatible; same model as the recitation teacher
+      return env.groqApiKey() ? new OpenAiChatProvider(env.groqApiKey(), env.teacherModel(), env.groqBaseUrl()) : null;
     default:
       return null; // "extractive"
   }

@@ -56,7 +56,7 @@ export const env = {
   coachModel: () => str("COACH_MODEL", str("OPENAI_CHAT_MODEL", "gpt-4o-mini")),
   openaiEmbeddingModel: () => str("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
 
-  llmProvider: () => str("LLM_PROVIDER", "extractive") as "anthropic" | "openai" | "extractive",
+  llmProvider: () => str("LLM_PROVIDER", "extractive") as "anthropic" | "openai" | "groq" | "extractive",
   anthropicApiKey: () => str("ANTHROPIC_API_KEY"),
   anthropicModel: () => str("ANTHROPIC_MODEL", "claude-sonnet-4-5"),
   /**

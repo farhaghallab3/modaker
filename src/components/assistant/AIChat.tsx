@@ -10,7 +10,9 @@ import { uid } from "@/lib/store/state";
 import type { AssistantAnswer, ChatMessage } from "@/lib/types";
 import { AnswerView } from "./AnswerView";
 import { SpeakButton } from "./SpeakButton";
+import { VoiceNote } from "./VoiceNote";
 import { useVoiceQuestion, VoiceButton } from "./VoiceQuestion";
+import { playSpeech } from "@/lib/assistant/speech-player";
 
 export interface AssistantContext {
   surah?: number;
@@ -101,16 +103,6 @@ export function AIChat({
   const hintId = useId();
   const sheet = variant === "sheet";
 
-  const [voiceNote, setVoiceNote] = useState(false);
-  const voice = useVoiceQuestion({
-    // the existing upload needs a valid ayah range; the audio is a QUESTION, so only the surah/ayah validity matters
-    range: { surah: context?.surah ?? 1, from: context?.ayah ?? 1, to: context?.ayah ?? 1 },
-    onText: (t) => {
-      setDraft(t.slice(0, MAX_LEN));
-      setVoiceNote(true);
-      requestAnimationFrame(() => inputRef.current?.focus());
-    },
-  });
   const contextLabel = contextLabelFor(context);
   const suggestions = context?.ayah ? AYAH_SUGGESTIONS : ASSISTANT_SUGGESTIONS;
 
@@ -125,11 +117,11 @@ export function AIChat({
   }, [messages, pending, sheet]);
 
   const ask = useCallback(
-    async (question: string) => {
+    async (question: string, voiceNote?: { url: string; seconds: number }) => {
       const q = question.trim().slice(0, MAX_LEN);
       if (!q || pending) return;
       const now = new Date().toISOString();
-      setMessages((m) => [...m, { id: uid("q"), role: "user", content: q, createdAt: now }]);
+      setMessages((m) => [...m, { id: uid("q"), role: "user", content: q, voice: voiceNote, createdAt: now }]);
       setDraft("");
       setPending(true);
       let answer: AssistantAnswer;
@@ -138,14 +130,21 @@ export function AIChat({
       } catch (e) {
         answer = failureAnswer(e);
       }
-      setMessages((m) => [
-        ...m,
-        { id: uid("a"), role: "assistant", content: answer.text, answer, createdAt: new Date().toISOString() },
-      ]);
+      // Asked by voice: the whole reply is spoken too (and written), like talking to a sheikh; its speaker button replays it.
+      if (voiceNote && answer.replySpeech) answer = { ...answer, speech: answer.replySpeech };
+      const id = uid("a");
+      setMessages((m) => [...m, { id, role: "assistant", content: answer.text, answer, createdAt: new Date().toISOString() }]);
       setPending(false);
+      if (voiceNote && answer.speech) playSpeech(id, answer.speech);
     },
     [context, pending],
   );
+
+  const voice = useVoiceQuestion({
+    // the existing upload needs a valid ayah range; the audio is a QUESTION, so only the surah/ayah validity matters
+    range: { surah: context?.surah ?? 1, from: context?.ayah ?? 1, to: context?.ayah ?? 1 },
+    onText: (t, note) => void ask(t, { url: URL.createObjectURL(note.blob), seconds: note.seconds }),
+  });
 
   /** Re-ask the question that produced a failed answer, replacing the failure. */
   function retry(answerId: string) {
@@ -196,10 +195,14 @@ export function AIChat({
             {messages.map((m) =>
               m.role === "user" ? (
                 <li key={m.id} className="flex justify-end animate-rise">
-                  <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-se-md bg-olive-100 px-4 py-2.5 text-[0.95rem] leading-7 text-forest">
-                    <span className="sr-only">سؤالك: </span>
-                    {m.content}
-                  </p>
+                  {m.voice ? (
+                    <VoiceNote url={m.voice.url} seconds={m.voice.seconds} heard={m.content} />
+                  ) : (
+                    <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-se-md bg-olive-100 px-4 py-2.5 text-[0.95rem] leading-7 text-forest">
+                      <span className="sr-only">سؤالك: </span>
+                      {m.content}
+                    </p>
+                  )}
                 </li>
               ) : (
                 <li key={m.id} className="flex gap-3 animate-rise">
@@ -277,7 +280,6 @@ export function AIChat({
             value={draft}
             maxLength={MAX_LEN}
             onChange={(e) => {
-              setVoiceNote(false);
               setDraft(e.target.value);
               autosize(e.target);
             }}
@@ -297,20 +299,17 @@ export function AIChat({
           </button>
         </form>
         {voice.state === "recording" ? (
-          <p role="status" className="mt-2 text-xs text-terracotta">
-            نستمع إلى سؤالك… اضغط زر الإيقاف عند الانتهاء.
+          <p role="status" className="mt-2 flex items-center gap-2 text-xs text-terracotta">
+            <span className="size-2 rounded-full bg-terracotta animate-pulse" aria-hidden />
+            أستمع إليك… اضغط زر الإيقاف عند الانتهاء، وسأرسل رسالتك الصوتية.
           </p>
         ) : voice.state === "transcribing" ? (
           <p role="status" className="mt-2 text-xs text-muted">
-            نحوّل صوتك إلى نص…
+            أرسل رسالتك الصوتية…
           </p>
         ) : voice.error ? (
           <p role="alert" className="mt-2 text-xs text-terracotta">
             {voice.error}
-          </p>
-        ) : voiceNote && draft.trim() ? (
-          <p role="status" className="mt-2 text-xs leading-5 text-ink/80">
-            هذا ما فهمناه من صوتك، وقد يخطئ التعرّف على الكلام. راجع النص وصحّحه إن لزم، ثم اضغط إرسال.
           </p>
         ) : null}
         <p id={hintId} className="sr-only">

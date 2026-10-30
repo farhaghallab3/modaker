@@ -19,19 +19,29 @@ export interface Template {
 }
 
 /** Identifies the current set of fixed wording; bump together with any template change. */
-export const TEMPLATE_SET_VERSION = "2026-10-07.1";
+export const TEMPLATE_SET_VERSION = "2026-10-30.1";
 
 const t = (id: string, text: string, approval: TemplateApproval, version = 1): Template => ({ id, version, text, approval });
 
 export const TEMPLATES = {
-  /** Used whenever evidence is missing or too weak. Wording requested by the product owner. */
-  abstain: t("abstain", "لا تتوفر لدي مادة موثوقة كافية للإجابة عن هذا السؤال.", "owner_provided"),
+  /**
+   * Used whenever evidence is missing or too weak. The product owner asked (2026-10-30) for the warm voice of a kind
+   * teacher instead of a dry refusal: it still says plainly that no reliable material was found, rules nothing, and
+   * points to a scholar. New wording, so it waits for scholarly review.
+   */
+  abstain: t(
+    "abstain",
+    "سؤالك طيّب، بارك الله فيك وزادك حرصًا على العلم. لم أجد فيما بين يديّ من المصادر الموثّقة ما يكفي لأجيبك جوابًا أطمئنّ إليه، ولا أحبّ أن أقول في دين الله بغير علم. أنصحك أن تسأل عالمًا تثق به، ويسعدني أن أشرح لك معنى أي آية أو ما ورد في القرآن وتفسيره عن موضوع سؤالك.",
+    "pending_scholarly_review",
+    2,
+  ),
 
   /** Level D — personal fatwa / case. Neutral: names no specific authority or website. */
   referralD: t(
     "referral.personal",
-    "هذه المسألة تتعلق بحالة شخصية وتحتاج إلى فتوى من جهة علمية مؤهلة. يمكنني مساعدتك في عرض المعلومات العامة والنصوص والمصادر المرتبطة بالموضوع.",
-    "owner_provided",
+    "بارك الله فيك وجزاك خيرًا على حرصك. هذه المسألة تتعلق بحالتك أنت، وتحتاج إلى فتوى من عالِم أو جهة علمية مؤهلة تسمع منك التفاصيل. وأنا معك في عرض المعلومات العامة والنصوص والمصادر المرتبطة بالموضوع.",
+    "pending_scholarly_review",
+    2,
   ),
 
   /** Level C — preface before sourced material. Conservative placeholder, pending scholarly review. */
@@ -47,16 +57,18 @@ export const TEMPLATES = {
    */
   fiqhNoMaterial: t(
     "fiqh.nomaterial",
-    "هذه المسألة فقهية وقد تتضمن تفصيلًا أو خلافًا. لا تتوفر في قاعدة المعرفة الحالية مادة فقهية موثوقة كافية لعرض الإجابة بمصدر معتمد.",
+    "سؤالك مهم، بارك الله فيك. هذه مسألة فقهية قد يكون فيها تفصيل أو خلاف بين أهل العلم، ولا تتوفر في قاعدة المعرفة الحالية مادة فقهية موثوقة أنقل لك منها الجواب بمصدر معتمد، فلا أجيبك فيها من عندي. اسأل عالمًا أو مفتيًا تثق به، وأنا معك في معاني الآيات وتفسيرها.",
     "pending_scholarly_review",
+    2,
   ),
   /** Level C when nothing approved is available: the first clause only, then the abstention. */
   sensitiveCNoMaterial: t("sensitive.nomaterial", "هذه المسألة قد تتضمن خلافًا أو تفصيلًا علميًا.", "pending_scholarly_review"),
 
   noHadithSource: t(
     "hadith.nosource",
-    "لا أنقل حديثًا من الذاكرة، ولا أنسب نصًا أو راويًا أو درجة أو مرجعًا إلا من مصدر حديثي معتمد، ولا يتوفر لدي مثل هذا المصدر حاليًا.",
+    "لا أنقل حديثًا من الذاكرة، ولا أنسب نصًا أو راويًا أو درجة أو مرجعًا إلا من مصدر حديثي معتمد، ولا يتوفر لدي مثل هذا المصدر حاليًا. ارجع إلى كتب الحديث المحقّقة أو اسأل أهل العلم.",
     "pending_scholarly_review",
+    2,
   ),
 
   /** Asbab al-nuzul asked, but no approved asbab source is loaded: say so, never repackage tafsir as a reason of revelation. */
@@ -90,7 +102,14 @@ export const TEMPLATES = {
   injection: t("safety.injection", "لا يمكنني تغيير قواعد الأمان أو الإجابة بغير الاعتماد على المصادر الموثقة.", "operational"),
   hostile: t("safety.hostile", "سؤالك مهم، وسأجيب عن مضمونه بهدوء من المصادر المتاحة.", "operational"),
 
-  extractiveIntro: t("extractive.intro", "إليك ما ورد في المصادر المعتمدة حول سؤالك:", "operational"),
+  extractiveIntro: t("extractive.intro", "إليك ما ورد في المصادر المعتمدة حول سؤالك، أنقله لك بنصّه مع مصدره:", "operational", 2),
+  /**
+   * A short kind opening before a sourced answer, like a teacher greeting a student's question. One is picked per answer.
+   * Duas, so they wait for scholarly review like the rest of the religious-facing wording.
+   */
+  warmOpen1: t("warm.open.1", "بارك الله فيك، سؤال طيّب.", "pending_scholarly_review"),
+  warmOpen2: t("warm.open.2", "أحسنتَ السؤال، زادك الله علمًا وحرصًا.", "pending_scholarly_review"),
+  warmOpen3: t("warm.open.3", "جزاك الله خيرًا على سؤالك.", "pending_scholarly_review"),
   needsRef: t("needsref", "حدّد السورة ورقم الآية حتى أعرض لك النص من المصحف الموثّق، مثل: «اعرض الآية ٥ من سورة الملك».", "operational"),
   outOfRange: t("range.out", "هذه الآية خارج نطاق السورة المذكورة. تأكد من رقم الآية وأعد المحاولة.", "operational"),
   /** «هذه الآية» asked while only a surah (no ayah) is known: ask which ayah instead of guessing one. */
