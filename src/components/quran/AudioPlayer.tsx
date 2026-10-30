@@ -3,9 +3,10 @@
 import { useId, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { cn, Segmented } from "@/components/ui/primitives";
-import { RECITERS, reciterLabel, setReciterId, useReciter } from "@/lib/quran/reciters";
+import { reciterLabel, useReciter } from "@/lib/quran/reciters";
 import { toArabicDigits } from "@/lib/quran/surahs";
 import type { Ayah } from "@/lib/types";
+import { ReciterPicker } from "./ReciterPicker";
 import type { useAyahAudio } from "./useAyahAudio";
 
 export type AyahAudio = ReturnType<typeof useAyahAudio>;
@@ -179,25 +180,5 @@ export function AudioPlayer({
 
 /** Choose the reciter; the choice is remembered on this device and used by every player. */
 export function ReciterSelect({ className }: { className?: string }) {
-  const reciter = useReciter();
-  const id = useId();
-  return (
-    <div className={cn("flex items-center justify-between gap-3 sm:justify-start", className)}>
-      <label htmlFor={id} className="text-xs text-muted shrink-0">
-        القارئ
-      </label>
-      <select
-        id={id}
-        value={reciter.id}
-        onChange={(e) => setReciterId(e.target.value)}
-        className="h-9 min-w-0 flex-1 sm:flex-none rounded-xl bg-white px-3 text-sm text-forest ring-1 ring-inset ring-line focus:outline-none focus:ring-2 focus:ring-olive"
-      >
-        {RECITERS.map((r) => (
-          <option key={r.id} value={r.id}>
-            {reciterLabel(r)}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
+  return <ReciterPicker className={className} />;
 }
