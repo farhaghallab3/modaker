@@ -10,17 +10,24 @@ import type { AyahRange } from "@/lib/types";
 export type VoiceState = "idle" | "recording" | "transcribing";
 
 /**
- * Voice question. Reuses the existing speech-to-text upload; the recognized text is NEVER sent to the assistant
- * automatically — it is placed in the question box for the learner to read, correct and send. The audio is held
- * in memory only for the request and dropped.
+ * Voice question, sent like a voice note: the recording is shown in the chat as audio (kept in memory only, never
+ * uploaded except for speech-to-text), and the recognized text is sent to the assistant with it and shown small
+ * under the note, so a misheard question is visible.
  */
-export function useVoiceQuestion({ range, onText }: { range: AyahRange; onText: (text: string) => void }) {
+export function useVoiceQuestion({
+  range,
+  onText,
+}: {
+  range: AyahRange;
+  onText: (text: string, note: { blob: Blob; seconds: number }) => void;
+}) {
   const [state, setState] = useState<VoiceState>("idle");
   const [error, setError] = useState<string | null>(null);
   const supported = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined";
   const rec = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
+  const startedAt = useRef(0);
 
   const release = useCallback(() => {
     stream.current?.getTracks().forEach((t) => t.stop());
@@ -39,6 +46,7 @@ export function useVoiceQuestion({ range, onText }: { range: AyahRange; onText: 
       r.onstop = async () => {
         release();
         const blob = new Blob(chunks.current, { type: r.mimeType || "audio/webm" });
+        const seconds = Math.max(1, Math.round((Date.now() - startedAt.current) / 1000));
         chunks.current = [];
         if (blob.size < 1500) {
           setState("idle");
@@ -50,7 +58,7 @@ export function useVoiceQuestion({ range, onText }: { range: AyahRange; onText: 
           const t = await api.transcribe(blob, range);
           const text = (t.text ?? "").trim();
           if (looksLikeNoSpeech(t)) setError("لم نسمع سؤالك بوضوح. اقترب من الميكروفون وأعد المحاولة، أو اكتب سؤالك.");
-          else onText(text);
+          else onText(text, { blob, seconds });
         } catch {
           setError("تعذّر تحويل الصوت إلى نص الآن. يمكنك كتابة سؤالك.");
         } finally {
@@ -58,6 +66,7 @@ export function useVoiceQuestion({ range, onText }: { range: AyahRange; onText: 
         }
       };
       rec.current = r;
+      startedAt.current = Date.now();
       r.start();
       setState("recording");
     } catch {

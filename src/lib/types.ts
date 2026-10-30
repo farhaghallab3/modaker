@@ -430,6 +430,8 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  /** A question sent as a voice note: the recording (object URL, in memory only) and its length in seconds. */
+  voice?: { url: string; seconds: number };
   answer?: AssistantAnswer;
   createdAt: string;
 }

@@ -42,6 +42,11 @@ export function stopSpeech() {
   set({ id: null, status: "idle" });
 }
 
+/** Plays an answer right away (used when the question was asked by voice: the answer is spoken without a tap). */
+export function playSpeech(id: string, speech: { text: string; exp: number; sig: string }) {
+  void start(id, speech);
+}
+
 async function start(id: string, speech: { text: string; exp: number; sig: string }) {
   stopSpeech();
   const mine = ++run;
