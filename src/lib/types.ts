@@ -424,6 +424,8 @@ export interface AssistantAnswer {
   disclosure?: string;
   /** Present only when the generated explanation may be read aloud; the signature is what lets the browser ask for exactly this text. */
   speech?: { text: string; exp: number; sig: string };
+  /** The whole reply spoken back when the question was asked by voice (never Quran verses or hadith). */
+  replySpeech?: { text: string; exp: number; sig: string };
 }
 
 export interface ChatMessage {

@@ -130,10 +130,11 @@ export function AIChat({
       } catch (e) {
         answer = failureAnswer(e);
       }
+      // Asked by voice: the whole reply is spoken too (and written), like talking to a sheikh; its speaker button replays it.
+      if (voiceNote && answer.replySpeech) answer = { ...answer, speech: answer.replySpeech };
       const id = uid("a");
       setMessages((m) => [...m, { id, role: "assistant", content: answer.text, answer, createdAt: new Date().toISOString() }]);
       setPending(false);
-      // Asked by voice: the answer is spoken too (written as well), like talking to a sheikh.
       if (voiceNote && answer.speech) playSpeech(id, answer.speech);
     },
     [context, pending],

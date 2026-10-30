@@ -200,7 +200,7 @@ test("missing evidence → the exact abstention sentence, no citations, no verse
   const { assistant } = make({ llm: new FakeLlm(), generation: true });
   const a = await ask(assistant, "ما فضل الصبر؟");
   expectShape(a, { level: "B", type: "abstention", abstained: true, reason: "no_evidence", citations: "none" });
-  assert.equal(a.text, "لا تتوفر لدي مادة موثوقة كافية للإجابة عن هذا السؤال.");
+  assert.equal(a.text, TEMPLATES.abstain.text);
   assert.equal(a.verses, undefined);
 });
 

@@ -16,6 +16,8 @@ import {
   signSpeech,
   speakableText,
   speechFor,
+  replySpeechFor,
+  voiceReplyText,
   SPEECH_MAX_CHARS,
   geminiAudioData,
   synthesize,
@@ -123,6 +125,36 @@ test("sensitive (C), personal (D), abstentions, templates and extractive quotes 
   assert.equal(speakableText(answer({ abstained: true })), null);
   assert.equal(speakableText(answer({ blocks: [explanation("هذا نص قالب جاهز طويل بما يكفي.", "template")] })), null);
   assert.equal(speakableText(answer({ blocks: [explanation("اقتباس حرفي من المصدر طويل بما يكفي.", "extractive")] })), null);
+});
+
+test("a voice question gets the whole reply spoken: warm wording, referrals and tafsir quotes, never Quran or hadith", () => {
+  const hadith: AnswerBlock = { type: "hadith", text: "نص الحديث", grade: "صحيح", reference: "مرجع", sourceId: "hadeethenc:hadith" };
+  const tafsir = (text: string): AnswerBlock => ({ type: "source_quote", text, sourceId: "tafsir:muyassar", ref: "1:1", citation: 1 });
+  const a = answer({
+    verses: [verse],
+    blocks: [
+      explanation("بارك الله فيك، سؤال طيّب.", "template"),
+      explanation("إليك ما ورد في المصادر المعتمدة:", "extractive"),
+      tafsir("معنى الآية أن الله رحيم بعباده ﴿كلمة مقتبسة﴾ ويغفر لهم."),
+      hadith,
+      { type: "quran", verses: [verse], source: { id: "s", title: "t" } },
+    ],
+  });
+  const t = voiceReplyText(a)!;
+  assert.match(t, /بارك الله فيك/);
+  assert.match(t, /قال في التفسير الميسر: معنى الآية/);
+  assert.ok(!t.includes("نص الحديث") && !t.includes(verse.textUthmani) && !t.includes("كلمة مقتبسة"));
+  // a tafsir quote that contains the attached verse verbatim is left out
+  assert.ok(!voiceReplyText(answer({ verses: [verse], blocks: [explanation("مقدمة طيبة طويلة.", "template"), tafsir(`قال: ${verse.textUthmani}`)] }))!.includes("قال:"));
+  // Level C / D: only the fixed wording (notice, referral), never source quotes
+  const c = voiceReplyText(answer({ safetyLevel: "C", blocks: [{ type: "warning", text: "هذه المسألة قد تتضمن خلافًا.", code: "sensitive" }, tafsir("نص تفسير طويل بما يكفي هنا.")] }))!;
+  assert.ok(c.includes("خلافًا") && !c.includes("نص تفسير"));
+  assert.match(voiceReplyText(answer({ safetyLevel: "D", blocks: [{ type: "referral", text: "تحتاج إلى فتوى من عالم مؤهل.", templateId: "r" }] }))!, /فتوى/);
+  // a Quran-only answer has nothing to say; signing works like the speaker button
+  assert.equal(voiceReplyText(answer({ blocks: [{ type: "quran", verses: [verse], source: { id: "s", title: "t" } }] })), null);
+  assert.equal(verifySpeech(replySpeechFor(a)!, SECRET), true);
+  process.env.ASSISTANT_TTS = "off";
+  assert.equal(replySpeechFor(a), null);
 });
 
 test("no speech when the feature is off or unconfigured (no OpenAI key / no secret / ASSISTANT_TTS=off)", () => {

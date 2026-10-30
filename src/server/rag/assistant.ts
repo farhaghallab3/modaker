@@ -10,7 +10,7 @@
  *     └─ explain / story / word / general  [Level B, or C when disputed/sensitive]
  *          quote check  → misquoted ayah is corrected from the verified text (or: ask to clarify)
  *          retrieve     → approved + published passages only
- *          weak/no evidence → abstain: «لا تتوفر لدي مادة موثوقة كافية…»
+ *          weak/no evidence → abstain: a warm «no reliable material, ask a scholar» (TEMPLATES.abstain)
  *          C → conservative preface + sourced passages, no generation, no ruling
  *          B → extractive quoting, or (only if explicitly enabled) generation that must pass the
  *              verifier: valid citations on every sentence, quotes verbatim, no invented hadith
@@ -625,17 +625,20 @@ export function createAssistant(deps: AssistantDeps) {
         : [];
       const prefaceText = sensitive ? [TEMPLATES.sensitiveC.text] : [];
       const type: AnswerType = sensitive ? "sensitive_sourced" : "sourced_explanation";
+      // A kind opening, like a teacher greeting a student's question (fixed wording, never generated).
+      const warm = WARM_OPENINGS[Math.floor(random() * WARM_OPENINGS.length) % WARM_OPENINGS.length];
+      const warmB: AnswerBlock = { type: "explanation", text: warm.text, origin: "template", citations: [] };
 
       // Generation: Level B only, explicitly enabled, and the output must survive verification.
       if (d.generationAllowed && deps.llm) {
         try {
-          const g = await generate(d, evidence, verses, attach, preB, pre, type);
+          const g = await generate(d, evidence, verses, attach, [...preB, warmB], [...pre, warm.text], type);
           if (g) return g;
         } catch (e) {
           console.warn("[assistant] LLM failed, falling back to extractive:", (e as Error).message);
         }
       }
-      return finish(await extractive(evidence, attach, type, [...pre, ...prefaceText], [...preB, ...sensitivePreface], await quranBlock()));
+      return finish(await extractive(evidence, attach, type, [...pre, ...prefaceText, warm.text], [...preB, ...sensitivePreface, warmB], await quranBlock()));
     }
 
     async function generate(
@@ -714,6 +717,8 @@ export function createAssistant(deps: AssistantDeps) {
   return { answer };
 }
 
+const WARM_OPENINGS = [TEMPLATES.warmOpen1, TEMPLATES.warmOpen2, TEMPLATES.warmOpen3];
+
 /** The correction's citation takes slot 1, so every later citation index moves up by one. */
 function shiftBlock(b: AnswerBlock): AnswerBlock {
   if (b.type === "source_quote") return { ...b, citation: b.citation + 1 };
@@ -762,7 +767,9 @@ export async function answerQuestion(input: AskInput): Promise<AssistantAnswer> 
   const { meta, ...answer } = await assistant.answer(input);
   if (meta?.issues.length) console.warn("[assistant] verifier removed:", meta.issues.map((i) => i.code).join(","));
   // Speaker button: only the generated explanation text, signed so the speech endpoint cannot be used as a generic TTS proxy.
-  const { speechFor } = await import("../tts/speech");
+  const { speechFor, replySpeechFor } = await import("../tts/speech");
   const speech = speechFor(answer);
-  return speech ? { ...answer, speech } : answer;
+  // A question asked by voice gets a spoken reply too (the browser plays it only then).
+  const replySpeech = replySpeechFor(answer);
+  return { ...answer, ...(speech ? { speech } : {}), ...(replySpeech ? { replySpeech } : {}) };
 }

@@ -225,12 +225,15 @@ test("registry metadata is complete for every source", () => {
   }
 });
 
-test("Level C wording is marked as pending scholarly review; owner-provided texts are marked as such", () => {
+test("Level C and the warm (new) wording are marked as pending scholarly review", () => {
   assert.equal(TEMPLATES.sensitiveC.approval, "pending_scholarly_review");
-  assert.equal(TEMPLATES.referralD.approval, "owner_provided");
-  assert.equal(TEMPLATES.abstain.approval, "owner_provided");
-  assert.ok(templatesPendingReview().some((t) => t.id === TEMPLATES.sensitiveC.id));
-  assert.equal(TEMPLATES.abstain.text, "لا تتوفر لدي مادة موثوقة كافية للإجابة عن هذا السؤال.");
+  for (const t of [TEMPLATES.referralD, TEMPLATES.abstain, TEMPLATES.warmOpen1, TEMPLATES.warmOpen2, TEMPLATES.warmOpen3]) {
+    assert.equal(t.approval, "pending_scholarly_review", t.id);
+    assert.ok(templatesPendingReview().some((x) => x.id === t.id), t.id);
+  }
+  // the warm abstention still says no reliable material was found, rules nothing, and points to a scholar
+  assert.match(TEMPLATES.abstain.text, /لم أجد .*المصادر الموثّقة/);
+  assert.match(TEMPLATES.abstain.text, /تسأل عالمًا/);
 });
 
 // ── learner-facing visibility: unreviewed content is hidden, never relabelled ──
