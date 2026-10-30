@@ -20,11 +20,8 @@ test("timings that do not cover every ayah in order are refused", () => {
   assert.equal(parseTimings({ error: "x" }, 3, "u"), null);
 });
 
-test("every whole-surah reciter is one of the app's reciters", () => {
-  const ids = new Set(RECITERS.map((r) => r.id));
-  for (const id of ["alafasy", "qatami", "husary"]) assert.ok(hasSurahAudio(id));
+test("every reciter in the app plays continuously from a whole-surah recording", () => {
+  for (const r of RECITERS) assert.ok(hasSurahAudio(r.id), r.id);
   assert.equal(surahAudioUrl("qatami", 18), "https://cdn.mp3quran.net/audio/nasser-qatami/r1/018.mp3");
   assert.equal(surahAudioUrl("husary-muallim", 18), null);
-  for (const id of ["alafasy", "minshawi", "tablawi", "qatami", "shatri", "husary", "husary-mujawwad", "abdulbasit", "abdulbasit-mujawwad", "sudais", "shuraim", "ghamdi", "dossari", "hudhaifi", "ayyoub", "ajamy", "basfar", "rifai", "qahtani", "bukhatir"])
-    assert.ok(ids.has(id) && hasSurahAudio(id), id);
 });

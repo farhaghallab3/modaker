@@ -2,7 +2,8 @@
  * Whole-surah recordings (one file per surah, like a Quran app or a music player) with the time where each ayah
  * starts and ends, from mp3quran.net (cdn.mp3quran.net, timings from mp3quran.net/api/v3/ayat_timing).
  * Playing from these files sounds continuous: the reciter's own breath between ayahs, no cut and no gap.
- * Reciters without a whole-surah file with timings keep the ayah-by-ayah files (reciters.ts).
+ * Every reciter in the app has one (the list in reciter-list.ts keeps only those); the ayah-by-ayah files are
+ * only the fallback when a surah file fails on a device.
  *
  * Each entry is the same reciter and the same recitation style as the ayah-by-ayah folder in reciters.ts.
  */
@@ -29,6 +30,19 @@ export const SURAH_AUDIO: Record<string, { read: number; folder: string }> = {
   rifai: { read: 89, folder: "https://cdn.mp3quran.net/audio/hani-rifai/r1/" },
   qahtani: { read: 21, folder: "https://cdn.mp3quran.net/audio/khalid-qahtani/r1/" },
   bukhatir: { read: 46, folder: "https://cdn.mp3quran.net/audio/salah-bukhatir/r1/" },
+  juhani: { read: 62, folder: "https://cdn.mp3quran.net/audio/abdullah-juhani/r1/" },
+  budair: { read: 43, folder: "https://cdn.mp3quran.net/audio/salah-budair/r1/" },
+  matroud: { read: 59, folder: "https://cdn.mp3quran.net/audio/abdullah-matrood/r1/" },
+  qasim: { read: 67, folder: "https://cdn.mp3quran.net/audio/abdulmohsen-qasim/r1/" },
+  faresabbad: { read: 81, folder: "https://cdn.mp3quran.net/audio/fares-abbad/r1/" },
+  alijaber: { read: 76, folder: "https://cdn.mp3quran.net/audio/ali-jaber/r1/" },
+  akhdar: { read: 1, folder: "https://cdn.mp3quran.net/audio/ibrahim-akhdar/r1/" },
+  tunaiji: { read: 24, folder: "https://cdn.mp3quran.net/audio/khalifa-tunaiji/r1/" },
+  abdulkareem: { read: 115, folder: "https://cdn.mp3quran.net/audio/muhammad-abdulkareem/r1/" },
+  sahl: { read: 32, folder: "https://cdn.mp3quran.net/audio/sahl-yassin/r1/" },
+  alaqmi: { read: 10, folder: "https://cdn.mp3quran.net/audio/akram-alaqmi/r1/" },
+  suesy: { read: 77, folder: "https://cdn.mp3quran.net/audio/ali-souissi/r1/" },
+  naina: { read: 9, folder: "https://cdn.mp3quran.net/audio/ahmad-naina/r1/" },
 };
 
 export function hasSurahAudio(reciterId: string): boolean {
